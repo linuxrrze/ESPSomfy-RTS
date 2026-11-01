@@ -16,6 +16,10 @@ env:
   PYTHON_VERSION: "3.12"
   SMARTRC_CC1101_VERSION: "2.5.7"
   WEB_SOCKET_VERSION: "2.7.2"
+  # Replaces the core's -Os. Neither the firmware nor its libraries use C++ exceptions, and the
+  # exception tables cost about 75 KB of flash. The core adds -fexceptions after the extra flags,
+  # so -fno-exceptions has to go into the optimization flags to take effect.
+  COMPILER_OPTIMIZATION_FLAGS: "-Os -fno-exceptions -fno-unwind-tables -fno-asynchronous-unwind-tables"
 
 jobs:
   littlefs:
@@ -164,7 +168,7 @@ jobs:
       - name: Build ${{ matrix.name }}
         run: |
           mkdir -p build${{ matrix.name }}
-          arduino-cli compile --clean --output-dir build${{ matrix.name }} --fqbn ${{ matrix.fqbn }} --warnings none ./SomfyController
+          arduino-cli compile --clean --output-dir build${{ matrix.name }} --fqbn ${{ matrix.fqbn }} --build-property "compiler.optimization_flags=${{ env.COMPILER_OPTIMIZATION_FLAGS }}" --warnings none ./SomfyController
 
       - name: Check ${{ matrix.name }} size
         run: |
