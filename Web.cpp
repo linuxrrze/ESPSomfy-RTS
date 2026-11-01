@@ -1111,6 +1111,12 @@ void Web::handleReboot(WebServer &server) {
     sendError(server, 201, "Invalid HTTP Method: ");
   }
 }
+// The route handlers are captureless lambdas, which convert to function pointers. Registering them
+// through these helpers gives all routes one std::function instantiation instead of one per lambda
+// and keeps the registration code out of Web::begin().
+static void __attribute__((noinline)) onRoute(WebServer &srv, const char *uri, void (*fn)()) { srv.on(uri, fn); }
+static void __attribute__((noinline)) onRoute(WebServer &srv, const char *uri, HTTPMethod method, void (*fn)()) { srv.on(uri, method, fn); }
+static void __attribute__((noinline)) onRoute(WebServer &srv, const char *uri, HTTPMethod method, void (*fn)(), void (*ufn)()) { srv.on(uri, method, fn, ufn); }
 void Web::begin() {
   DEBUG_PRINTLN("Creating Web MicroServices...");
   // Must be the first handlers so they see every request.
@@ -1122,40 +1128,40 @@ void Web::begin() {
   // API Server Handlers
   apiServer.collectHeaders(keys, 1);  
   apiServer.enableCORS(true);
-  apiServer.on("/discovery", []() { webServer.handleDiscovery(apiServer); });
-  apiServer.on("/rooms", []() {webServer.handleGetRooms(apiServer); });
-  apiServer.on("/shades", []() { webServer.handleGetShades(apiServer); });
-  apiServer.on("/groups", []() { webServer.handleGetGroups(apiServer); });
-  apiServer.on("/login", []() { webServer.handleLogin(apiServer); });
+  onRoute(apiServer, "/discovery", []() { webServer.handleDiscovery(apiServer); });
+  onRoute(apiServer, "/rooms", []() {webServer.handleGetRooms(apiServer); });
+  onRoute(apiServer, "/shades", []() { webServer.handleGetShades(apiServer); });
+  onRoute(apiServer, "/groups", []() { webServer.handleGetGroups(apiServer); });
+  onRoute(apiServer, "/login", []() { webServer.handleLogin(apiServer); });
   apiServer.onNotFound([]() { webServer.handleNotFound(apiServer); });
-  apiServer.on("/controller", []() { webServer.handleController(apiServer); });
-  apiServer.on("/shadeCommand", []() { webServer.handleShadeCommand(apiServer); });
-  apiServer.on("/groupCommand", []() { webServer.handleGroupCommand(apiServer); });
-  apiServer.on("/tiltCommand", []() { webServer.handleTiltCommand(apiServer); });
-  apiServer.on("/repeatCommand", []() { webServer.handleRepeatCommand(apiServer); });
-  apiServer.on("/room", HTTP_GET, [] () { webServer.handleRoom(apiServer); });
-  apiServer.on("/shade", HTTP_GET, [] () { webServer.handleShade(apiServer); });
-  apiServer.on("/group", HTTP_GET, [] () { webServer.handleGroup(apiServer); });
-  apiServer.on("/setPositions", []() { webServer.handleSetPositions(apiServer); });
-  apiServer.on("/setSensor", []() { webServer.handleSetSensor(apiServer); });
-  apiServer.on("/downloadFirmware", []() { webServer.handleDownloadFirmware(apiServer); });
-  apiServer.on("/backup", []() { webServer.handleBackup(apiServer); });
-  apiServer.on("/reboot", []() { webServer.handleReboot(apiServer); });
+  onRoute(apiServer, "/controller", []() { webServer.handleController(apiServer); });
+  onRoute(apiServer, "/shadeCommand", []() { webServer.handleShadeCommand(apiServer); });
+  onRoute(apiServer, "/groupCommand", []() { webServer.handleGroupCommand(apiServer); });
+  onRoute(apiServer, "/tiltCommand", []() { webServer.handleTiltCommand(apiServer); });
+  onRoute(apiServer, "/repeatCommand", []() { webServer.handleRepeatCommand(apiServer); });
+  onRoute(apiServer, "/room", HTTP_GET, [] () { webServer.handleRoom(apiServer); });
+  onRoute(apiServer, "/shade", HTTP_GET, [] () { webServer.handleShade(apiServer); });
+  onRoute(apiServer, "/group", HTTP_GET, [] () { webServer.handleGroup(apiServer); });
+  onRoute(apiServer, "/setPositions", []() { webServer.handleSetPositions(apiServer); });
+  onRoute(apiServer, "/setSensor", []() { webServer.handleSetSensor(apiServer); });
+  onRoute(apiServer, "/downloadFirmware", []() { webServer.handleDownloadFirmware(apiServer); });
+  onRoute(apiServer, "/backup", []() { webServer.handleBackup(apiServer); });
+  onRoute(apiServer, "/reboot", []() { webServer.handleReboot(apiServer); });
   
   // Web Interface
-  server.on("/tiltCommand", []() { webServer.handleTiltCommand(server); });
-  server.on("/repeatCommand", []() { webServer.handleRepeatCommand(server); });
-  server.on("/shadeCommand", []() { webServer.handleShadeCommand(server); });
-  server.on("/groupCommand", []() { webServer.handleGroupCommand(server); });
-  server.on("/setPositions", []() { webServer.handleSetPositions(server); });
-  server.on("/setSensor", []() { webServer.handleSetSensor(server); });
-  server.on("/upnp.xml", []() { SSDP.schema(server.client()); });
-  server.on("/", []() { webServer.handleStreamFile(server, "/index.html", _encoding_html); });
-  server.on("/login", []() { webServer.handleLogin(server); });
-  server.on("/loginContext", []() { webServer.handleLoginContext(server); });
-  server.on("/shades.cfg", []() { webServer.handleStreamFile(server, "/shades.cfg", _encoding_text); });
-  server.on("/shades.tmp", []() { webServer.handleStreamFile(server, "/shades.tmp", _encoding_text); });
-  server.on("/getReleases", []() {
+  onRoute(server, "/tiltCommand", []() { webServer.handleTiltCommand(server); });
+  onRoute(server, "/repeatCommand", []() { webServer.handleRepeatCommand(server); });
+  onRoute(server, "/shadeCommand", []() { webServer.handleShadeCommand(server); });
+  onRoute(server, "/groupCommand", []() { webServer.handleGroupCommand(server); });
+  onRoute(server, "/setPositions", []() { webServer.handleSetPositions(server); });
+  onRoute(server, "/setSensor", []() { webServer.handleSetSensor(server); });
+  onRoute(server, "/upnp.xml", []() { SSDP.schema(server.client()); });
+  onRoute(server, "/", []() { webServer.handleStreamFile(server, "/index.html", _encoding_html); });
+  onRoute(server, "/login", []() { webServer.handleLogin(server); });
+  onRoute(server, "/loginContext", []() { webServer.handleLoginContext(server); });
+  onRoute(server, "/shades.cfg", []() { webServer.handleStreamFile(server, "/shades.cfg", _encoding_text); });
+  onRoute(server, "/shades.tmp", []() { webServer.handleStreamFile(server, "/shades.tmp", _encoding_text); });
+  onRoute(server, "/getReleases", []() {
     GitRepo repo;
     if(repo.getReleases(GIT_MAX_RELEASES, server.hasArg("insecure") && toBoolean(server.arg("insecure").c_str(), false)) == ERR_CERT_VERIFY) {
       server.send(500, _encoding_json, _response_cert);
@@ -1169,8 +1175,8 @@ void Web::begin() {
     resp.endObject();
     resp.endResponse();
   });
-  server.on("/downloadFirmware", []() { webServer.handleDownloadFirmware(server); });
-  server.on("/cancelFirmware", []() {
+  onRoute(server, "/downloadFirmware", []() { webServer.handleDownloadFirmware(server); });
+  onRoute(server, "/cancelFirmware", []() {
     // If we are currently downloading the filesystem we cannot cancel.
     if(!git.lockFS) {
       git.status = GIT_UPDATE_CANCELLING;
@@ -1186,8 +1192,8 @@ void Web::begin() {
       sendError(server, 500, "Cannot cancel during filesystem update.");
     }
   });
-  server.on("/backup", []() { webServer.handleBackup(server, true); });
-  server.on("/restore", HTTP_POST, []() {
+  onRoute(server, "/backup", []() { webServer.handleBackup(server, true); });
+  onRoute(server, "/restore", HTTP_POST, []() {
     server.sendHeader("Connection", "close");
     if(webServer.uploadSuccess) {
       server.send(200, _encoding_json, "{\"status\":\"Success\",\"desc\":\"Restoring Shade settings\"}");
@@ -1236,23 +1242,23 @@ void Web::begin() {
       }
 
     });
-  server.on("/index.js", []() { webServer.sendCacheHeaders(604800); webServer.handleStreamFile(server, "/index.js", "text/javascript"); });
-  server.on("/main.css", []() { webServer.sendCacheHeaders(604800); webServer.handleStreamFile(server, "/main.css", "text/css"); });
-  server.on("/widgets.css", []() { webServer.sendCacheHeaders(604800); webServer.handleStreamFile(server, "/widgets.css", "text/css"); });
-  server.on("/icons.css", []() {  webServer.sendCacheHeaders(604800); webServer.handleStreamFile(server, "/icons.css", "text/css"); });
-  server.on("/favicon.png", []() { webServer.sendCacheHeaders(604800); webServer.handleStreamFile(server, "/favicon.png", "image/png"); });
-  server.on("/icon.png", []() { webServer.sendCacheHeaders(604800); webServer.handleStreamFile(server, "/icon.png", "image/png"); });
-  server.on("/icon.svg", []() { webServer.sendCacheHeaders(604800); webServer.handleStreamFile(server, "/icon.svg", "image/svg+xml"); });
-  server.on("/apple-icon.png", []() { webServer.sendCacheHeaders(604800); webServer.handleStreamFile(server, "/apple-icon.png", "image/png"); });
+  onRoute(server, "/index.js", []() { webServer.sendCacheHeaders(604800); webServer.handleStreamFile(server, "/index.js", "text/javascript"); });
+  onRoute(server, "/main.css", []() { webServer.sendCacheHeaders(604800); webServer.handleStreamFile(server, "/main.css", "text/css"); });
+  onRoute(server, "/widgets.css", []() { webServer.sendCacheHeaders(604800); webServer.handleStreamFile(server, "/widgets.css", "text/css"); });
+  onRoute(server, "/icons.css", []() {  webServer.sendCacheHeaders(604800); webServer.handleStreamFile(server, "/icons.css", "text/css"); });
+  onRoute(server, "/favicon.png", []() { webServer.sendCacheHeaders(604800); webServer.handleStreamFile(server, "/favicon.png", "image/png"); });
+  onRoute(server, "/icon.png", []() { webServer.sendCacheHeaders(604800); webServer.handleStreamFile(server, "/icon.png", "image/png"); });
+  onRoute(server, "/icon.svg", []() { webServer.sendCacheHeaders(604800); webServer.handleStreamFile(server, "/icon.svg", "image/svg+xml"); });
+  onRoute(server, "/apple-icon.png", []() { webServer.sendCacheHeaders(604800); webServer.handleStreamFile(server, "/apple-icon.png", "image/png"); });
   server.onNotFound([]() { webServer.handleNotFound(server); });
-  server.on("/controller", []() { webServer.handleController(server); });
-  server.on("/rooms", []() { webServer.handleGetRooms(server); });
-  server.on("/shades", []() { webServer.handleGetShades(server); });
-  server.on("/groups", []() { webServer.handleGetGroups(server); });
-  server.on("/room", []() { webServer.handleRoom(server); });
-  server.on("/shade", []() { webServer.handleShade(server); });
-  server.on("/group", []() { webServer.handleGroup(server); });
-  server.on("/getNextRoom", []() {
+  onRoute(server, "/controller", []() { webServer.handleController(server); });
+  onRoute(server, "/rooms", []() { webServer.handleGetRooms(server); });
+  onRoute(server, "/shades", []() { webServer.handleGetShades(server); });
+  onRoute(server, "/groups", []() { webServer.handleGetGroups(server); });
+  onRoute(server, "/room", []() { webServer.handleRoom(server); });
+  onRoute(server, "/shade", []() { webServer.handleShade(server); });
+  onRoute(server, "/group", []() { webServer.handleGroup(server); });
+  onRoute(server, "/getNextRoom", []() {
     JsonResponse resp;
     resp.beginResponse(&server, g_content, sizeof(g_content));
     resp.beginObject();
@@ -1260,7 +1266,7 @@ void Web::begin() {
     resp.endObject();
     resp.endResponse();
   });
-  server.on("/getNextShade", []() {
+  onRoute(server, "/getNextShade", []() {
     uint8_t shadeId = somfy.getNextShadeId();
     JsonResponse resp;
     resp.beginResponse(&server, g_content, sizeof(g_content));
@@ -1273,7 +1279,7 @@ void Web::begin() {
     resp.endObject();
     resp.endResponse();
     });
-  server.on("/getNextGroup", []() {
+  onRoute(server, "/getNextGroup", []() {
     uint8_t groupId = somfy.getNextGroupId();
     JsonResponse resp;
     resp.beginResponse(&server, g_content, sizeof(g_content));
@@ -1285,7 +1291,7 @@ void Web::begin() {
     resp.endObject();
     resp.endResponse();
     });
-  server.on("/addRoom", []() {
+  onRoute(server, "/addRoom", []() {
     HTTPMethod method = server.method();
     SomfyRoom * room = nullptr;
     if (method == HTTP_POST || method == HTTP_PUT) {
@@ -1325,7 +1331,7 @@ void Web::begin() {
       sendError(server, 500, "Error saving Somfy Room.");
     }
     });
-  server.on("/addShade", []() {
+  onRoute(server, "/addShade", []() {
     HTTPMethod method = server.method();
     SomfyShade* shade = nullptr;
     if (method == HTTP_POST || method == HTTP_PUT) {
@@ -1366,7 +1372,7 @@ void Web::begin() {
       sendError(server, 500, "Error saving Somfy Shade.");
     }
     });
-  server.on("/addGroup", []() {
+  onRoute(server, "/addGroup", []() {
     HTTPMethod method = server.method();
     SomfyGroup * group = nullptr;
     if (method == HTTP_POST || method == HTTP_PUT) {
@@ -1406,7 +1412,7 @@ void Web::begin() {
       sendError(server, 500, "Error saving Somfy Group.");
     }
     });
-  server.on("/groupOptions", []() {
+  onRoute(server, "/groupOptions", []() {
     HTTPMethod method = server.method();
     if (method == HTTP_GET || method == HTTP_POST) {
       if (server.hasArg("groupId")) {
@@ -1447,7 +1453,7 @@ void Web::begin() {
     }
     
     });
-  server.on("/saveRoom", []() {
+  onRoute(server, "/saveRoom", []() {
     HTTPMethod method = server.method();
     if (method == HTTP_PUT || method == HTTP_POST) {
       // We are updating an existing room.
@@ -1482,7 +1488,7 @@ void Web::begin() {
     }
   });
 
-  server.on("/saveShade", []() {
+  onRoute(server, "/saveShade", []() {
     HTTPMethod method = server.method();
     if (method == HTTP_PUT || method == HTTP_POST) {
       // We are updating an existing shade.
@@ -1522,7 +1528,7 @@ void Web::begin() {
       else sendError(server, 500, "No shade object supplied.");
     }
   });
-  server.on("/saveGroup", []() {
+  onRoute(server, "/saveGroup", []() {
     HTTPMethod method = server.method();
     if (method == HTTP_PUT || method == HTTP_POST) {
       // We are updating an existing shade.
@@ -1556,7 +1562,7 @@ void Web::begin() {
       else sendError(server, 500, "No group object supplied.");
     }
     });
-  server.on("/setMyPosition", []() {
+  onRoute(server, "/setMyPosition", []() {
     HTTPMethod method = server.method();
     uint8_t shadeId = 255;
     int8_t pos = -1;
@@ -1604,7 +1610,7 @@ void Web::begin() {
     else 
       sendError(server, 500, "Invalid Http method");
     });
-  server.on("/setRollingCode", []() {
+  onRoute(server, "/setRollingCode", []() {
     HTTPMethod method = server.method();
     if (method == HTTP_PUT || method == HTTP_POST) {
       uint8_t shadeId = 255;
@@ -1643,7 +1649,7 @@ void Web::begin() {
       }
     }
   });
-  server.on("/setPaired", []() {
+  onRoute(server, "/setPaired", []() {
     uint8_t shadeId = 255;
     bool paired = false;
     if(server.hasArg("plain")) {
@@ -1679,7 +1685,7 @@ void Web::begin() {
       resp.endResponse();
     }
   });
-  server.on("/unpairShade", []() {
+  onRoute(server, "/unpairShade", []() {
     HTTPMethod method = server.method();
     if (method == HTTP_PUT || method == HTTP_POST) {
       uint8_t shadeId = 255;
@@ -1719,7 +1725,7 @@ void Web::begin() {
       }
     }
     });
-  server.on("/linkRepeater", []() {
+  onRoute(server, "/linkRepeater", []() {
     HTTPMethod method = server.method();
     if (method == HTTP_PUT || method == HTTP_POST) {
       // We are adding a linked repeater.
@@ -1753,7 +1759,7 @@ void Web::begin() {
       }
     }
   });
-  server.on("/unlinkRepeater", []() {
+  onRoute(server, "/unlinkRepeater", []() {
     HTTPMethod method = server.method();
     if (method == HTTP_PUT || method == HTTP_POST) {
       // We are adding a linked repeater.
@@ -1788,7 +1794,7 @@ void Web::begin() {
     }
   });
   
-  server.on("/unlinkRemote", []() {
+  onRoute(server, "/unlinkRemote", []() {
     HTTPMethod method = server.method();
     if (method == HTTP_PUT || method == HTTP_POST) {
       // We are updating an existing shade by adding a linked remote.
@@ -1825,7 +1831,7 @@ void Web::begin() {
       else sendError(server, 500, "No remote object supplied.");
     }
     });
-  server.on("/linkRemote", []() {
+  onRoute(server, "/linkRemote", []() {
     HTTPMethod method = server.method();
     if (method == HTTP_PUT || method == HTTP_POST) {
       // We are updating an existing shade by adding a linked remote.
@@ -1864,7 +1870,7 @@ void Web::begin() {
       else sendError(server, 500, "No remote object supplied.");
     }
     });
-  server.on("/linkToGroup", []() {
+  onRoute(server, "/linkToGroup", []() {
     HTTPMethod method = server.method();
     if (method == HTTP_PUT || method == HTTP_POST) {
       if (server.hasArg("plain")) {
@@ -1909,7 +1915,7 @@ void Web::begin() {
       else sendError(server, 500, "No linking object supplied.");
     }
   });
-  server.on("/unlinkFromGroup", []() {
+  onRoute(server, "/unlinkFromGroup", []() {
     HTTPMethod method = server.method();
     if (method == HTTP_PUT || method == HTTP_POST) {
       if (server.hasArg("plain")) {
@@ -1963,7 +1969,7 @@ void Web::begin() {
       else sendError(server, 500, "No unlinking object supplied.");
     }
   });
-  server.on("/deleteRoom", []() {
+  onRoute(server, "/deleteRoom", []() {
     HTTPMethod method = server.method();
     uint8_t roomId = 0;
     if (method == HTTP_GET || method == HTTP_PUT || method == HTTP_POST) {
@@ -1993,7 +1999,7 @@ void Web::begin() {
       server.send(200, _encoding_json, F("{\"status\":\"SUCCESS\",\"desc\":\"Room deleted.\"}"));
     }
     });
-  server.on("/deleteShade", []() {
+  onRoute(server, "/deleteShade", []() {
     HTTPMethod method = server.method();
     uint8_t shadeId = 255;
     if (method == HTTP_GET || method == HTTP_PUT || method == HTTP_POST) {
@@ -2026,7 +2032,7 @@ void Web::begin() {
       server.send(200, _encoding_json, F("{\"status\":\"SUCCESS\",\"desc\":\"Shade deleted.\"}"));
     }
     });
-  server.on("/deleteGroup", []() {
+  onRoute(server, "/deleteGroup", []() {
     HTTPMethod method = server.method();
     uint8_t groupId = 255;
     if (method == HTTP_GET || method == HTTP_PUT || method == HTTP_POST) {
@@ -2056,7 +2062,7 @@ void Web::begin() {
       server.send(200, _encoding_json, F("{\"status\":\"SUCCESS\",\"desc\":\"Group deleted.\"}"));
     }
     });
-  server.on("/updateFirmware", HTTP_POST, []() {
+  onRoute(server, "/updateFirmware", HTTP_POST, []() {
     if (Update.hasError())
       sendError(server, 500, "Error updating firmware: ");
     else
@@ -2100,7 +2106,7 @@ void Web::begin() {
       }
       esp_task_wdt_reset();
     });
-  server.on("/updateShadeConfig", HTTP_POST, []() {
+  onRoute(server, "/updateShadeConfig", HTTP_POST, []() {
     if(git.lockFS) {
       sendError(server, 500, "Filesystem update in progress");
       return;
@@ -2126,7 +2132,7 @@ void Web::begin() {
         somfy.loadShadesFile("/shades.tmp");
       }
     });
-  server.on("/updateApplication", HTTP_POST, []() {
+  onRoute(server, "/updateApplication", HTTP_POST, []() {
     server.sendHeader("Connection", "close");
     if (Update.hasError())
       sendError(server, 500, "Error updating application: ");
@@ -2174,7 +2180,7 @@ void Web::begin() {
       }
       esp_task_wdt_reset();
     });
-  server.on("/scanaps", []() {
+  onRoute(server, "/scanaps", []() {
     esp_task_wdt_reset();
     
     esp_task_wdt_delete(NULL);
@@ -2209,8 +2215,8 @@ void Web::begin() {
     resp.endObject();
     resp.endResponse();
     });
-  server.on("/reboot", []() { webServer.handleReboot(server);});
-  server.on("/saveSecurity", []() {
+  onRoute(server, "/reboot", []() { webServer.handleReboot(server);});
+  onRoute(server, "/saveSecurity", []() {
     DynamicJsonDocument doc(512);
     DeserializationError err = deserializeJson(doc, server.arg("plain"));
     if (err) {
@@ -2239,14 +2245,14 @@ void Web::begin() {
       }
     }
     });
-  server.on("/getSecurity", []() {
+  onRoute(server, "/getSecurity", []() {
     DynamicJsonDocument doc(512);
     JsonObject obj = doc.to<JsonObject>();
     settings.Security.toJSON(obj);
     serializeJson(doc, g_content);
     server.send(200, _encoding_json, g_content);
     });
-  server.on("/saveRadio", []() {
+  onRoute(server, "/saveRadio", []() {
     DynamicJsonDocument doc(512);
     DeserializationError err = deserializeJson(doc, server.arg("plain"));
     if (err) {
@@ -2273,7 +2279,7 @@ void Web::begin() {
       }
     }
     });
-  server.on("/getRadio", []() {
+  onRoute(server, "/getRadio", []() {
     JsonResponse resp;
     resp.beginResponse(&server, g_content, sizeof(g_content));
     resp.beginObject();
@@ -2281,7 +2287,7 @@ void Web::begin() {
     resp.endObject();
     resp.endResponse();
     });
-  server.on("/sendRemoteCommand", []() {
+  onRoute(server, "/sendRemoteCommand", []() {
     HTTPMethod method = server.method();
     if (method == HTTP_GET || method == HTTP_PUT || method == HTTP_POST) {
       somfy_frame_t frame;
@@ -2319,7 +2325,7 @@ void Web::begin() {
         sendError(server, 500, "No address or rolling code provided");
     }
     });
-  server.on("/setgeneral", []() {
+  onRoute(server, "/setgeneral", []() {
     DynamicJsonDocument doc(512);
     
     DEBUG_PRINT("Plain: ");
@@ -2353,7 +2359,7 @@ void Web::begin() {
       }
     }
     });
-  server.on("/setNetwork", []() {
+  onRoute(server, "/setNetwork", []() {
     DynamicJsonDocument doc(1024);
     DeserializationError err = deserializeJson(doc, server.arg("plain"));
     if (err) {
@@ -2407,7 +2413,7 @@ void Web::begin() {
       }
     }
   });
-  server.on("/setIP", []() {
+  onRoute(server, "/setIP", []() {
     DEBUG_PRINTLN("Setting IP...");
     DynamicJsonDocument doc(1024);
     DeserializationError err = deserializeJson(doc, server.arg("plain"));
@@ -2428,7 +2434,7 @@ void Web::begin() {
       }
     }
   });
-  server.on("/connectwifi", []() {
+  onRoute(server, "/connectwifi", []() {
     DEBUG_PRINTLN("Settings WIFI connection...");
     DynamicJsonDocument doc(512);
     DeserializationError err = deserializeJson(doc, server.arg("plain"));
@@ -2470,7 +2476,7 @@ void Web::begin() {
       }
     }
     });
-  server.on("/modulesettings", []() {
+  onRoute(server, "/modulesettings", []() {
     JsonResponse resp;
     resp.beginResponse(&server, g_content, sizeof(g_content));
     resp.beginObject();
@@ -2491,7 +2497,7 @@ void Web::begin() {
     server.send(200, _encoding_json, g_content);
     */
     });
-  server.on("/networksettings", []() {
+  onRoute(server, "/networksettings", []() {
     JsonResponse resp;
     resp.beginResponse(&server, g_content, sizeof(g_content));
     resp.beginObject();
@@ -2524,7 +2530,7 @@ void Web::begin() {
     server.send(200, _encoding_json, g_content);
     */
     });
-  server.on("/connectmqtt", []() {
+  onRoute(server, "/connectmqtt", []() {
     DynamicJsonDocument doc(1024);
     DeserializationError err = deserializeJson(doc, server.arg("plain"));
     if (err) {
@@ -2563,7 +2569,7 @@ void Web::begin() {
     });
   // CA certificate (PEM) for the MQTT broker. It is sent as the raw request body because it does
   // not fit the JSON documents of the other MQTT settings.
-  server.on("/mqttcacert", []() {
+  onRoute(server, "/mqttcacert", []() {
     HTTPMethod method = server.method();
     if(method == HTTP_GET) {
       char *pem = (char *)malloc(MQTT_MAX_CA_CERT + 1);
@@ -2600,7 +2606,7 @@ void Web::begin() {
     snprintf(g_content, sizeof(g_content), "{\"caCertLength\":%u}", pem.length());
     server.send(200, _encoding_json, g_content);
   });
-  server.on("/mqttsettings", []() {
+  onRoute(server, "/mqttsettings", []() {
     JsonResponse resp;
     resp.beginResponse(&server, g_content, sizeof(g_content));
     resp.beginObject();
@@ -2616,7 +2622,7 @@ void Web::begin() {
     server.send(200, _encoding_json, g_content);
     */
     });
-  server.on("/roomSortOrder", []() {
+  onRoute(server, "/roomSortOrder", []() {
     DynamicJsonDocument doc(512);
     DEBUG_PRINT("Plain: ");
     DEBUG_PRINT(server.method());
@@ -2646,7 +2652,7 @@ void Web::begin() {
       }
     }
   });
-  server.on("/shadeSortOrder", []() {
+  onRoute(server, "/shadeSortOrder", []() {
     DynamicJsonDocument doc(512);
     DEBUG_PRINT("Plain: ");
     DEBUG_PRINT(server.method());
@@ -2676,7 +2682,7 @@ void Web::begin() {
       }
     }
   });
-  server.on("/groupSortOrder", []() {
+  onRoute(server, "/groupSortOrder", []() {
     DynamicJsonDocument doc(512);
     DEBUG_PRINT("Plain: ");
     DEBUG_PRINT(server.method());
@@ -2706,7 +2712,7 @@ void Web::begin() {
       }
     }
   });  
-  server.on("/beginFrequencyScan", []() {
+  onRoute(server, "/beginFrequencyScan", []() {
     somfy.transceiver.beginFrequencyScan();
     JsonResponse resp;
     resp.beginResponse(&server, g_content, sizeof(g_content));
@@ -2722,7 +2728,7 @@ void Web::begin() {
     server.send(200, _encoding_json, g_content);
     */
   });
-  server.on("/endFrequencyScan", []() {
+  onRoute(server, "/endFrequencyScan", []() {
     somfy.transceiver.endFrequencyScan();
     JsonResponse resp;
     resp.beginResponse(&server, g_content, sizeof(g_content));
@@ -2738,7 +2744,7 @@ void Web::begin() {
     server.send(200, _encoding_json, g_content);
     */
   });
-  server.on("/recoverFilesystem", [] () {
+  onRoute(server, "/recoverFilesystem", [] () {
     if(git.status == GIT_UPDATING)
       server.send(200, "application/json", "{\"status\":\"OK\",\"desc\":\"Filesystem is updating.  Please wait!!!\"}");
     else if(git.status != GIT_STATUS_READY)
