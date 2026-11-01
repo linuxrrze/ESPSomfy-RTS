@@ -16,7 +16,45 @@ The research led me to several projects that looked like they would do what I wa
 This software uses a couple of readily available hardware components.  These include an ESP32 module and a CC1101 Transceiver module.  The CC1101 is connected via SPI to the ESP32 and controlled using SmartRC-CC1101-Driver library.  All in at the start of 2023 the total cost for me was about $12us for the final components.
 
 # ESPSomfy RTS Device Updates
-If you are here looking for how to install the latest software on your device. The wiki for instructions on how to do this is located here. [Updating ESPSomfy RTS](https://github.com/rstrouse/ESPSomfy-RTS/wiki/Updating-ESPSomfy-RTS)
+If you are here looking for how to install the latest software on your device, read on below. The wiki has a longer guide with screenshots: [Updating ESPSomfy RTS](https://github.com/rstrouse/ESPSomfy-RTS/wiki/Updating-ESPSomfy-RTS)
+
+## Installing and flashing
+Download the files for your chip from the [releases](https://github.com/linuxrrze/ESPSomfy-RTS/releases):
+
+| Chip | Update through the web UI | Complete image for USB |
+|---|---|---|
+| ESP32 (WROOM, WROVER, DevKit) | `SomfyController.ino.esp32.bin` | `SomfyController.onboard.esp32.bin.zip` |
+| ESP32-S3 | `SomfyController.ino.esp32s3.bin` | `SomfyController.onboard.esp32s3.bin.zip` |
+| ESP32-C3 | `SomfyController.ino.esp32c3.bin` | `SomfyController.onboard.esp32c3.bin.zip` |
+| ESP32-S2 | `SomfyController.ino.esp32s2.bin` | `SomfyController.onboard.esp32s2.bin.zip` |
+
+All chips use the same `SomfyController.littlefs.bin`.
+
+### Controller already running ESPSomfy RTS: use the web UI (keeps your configuration)
+1. Open System → Firmware, choose **Update Firmware** and upload `SomfyController.ino.<chip>.bin`. Wait for the controller to reboot.
+2. Choose **Update Application** and upload `SomfyController.littlefs.bin`.
+
+> [!WARNING]
+> `SomfyController.ino.<chip>.bin` contains only the application. **Never write it to address `0x0` over USB:** that overwrites the bootloader, and the board stops booting with `flash read err, 1000`.
+
+### New or unbootable board: flash over USB (erases everything)
+Unzip `SomfyController.onboard.<chip>.bin.zip` and write the image to address **`0x0`**. Wi-Fi, settings and shades are erased.
+
+```
+esptool --port /dev/ttyUSB0 write-flash 0x0 SomfyController.onboard.esp32.bin
+```
+
+Use esptool v5; with esptool v4 the command is `esptool.py ... write_flash`. Instead of esptool, you can choose the image under "Install" on https://web.esphome.io, which needs no address. After flashing, join the controller's own Wi-Fi access point to set it up.
+
+### Board that no longer boots but still has its shades: flash over USB, keeping the shades
+If the board stopped booting, for example because an `.ino` file was written to `0x0`, you can restore it without erasing the file system that holds the shades:
+
+```
+head -c 65536 SomfyController.onboard.esp32.bin > boot-area.bin
+esptool --port /dev/ttyUSB0 write-flash 0x0 boot-area.bin 0x10000 SomfyController.ino.esp32.bin
+```
+
+This writes the bootloader and partition table, then the application at `0x10000`. If the earlier write covered the settings area, Wi-Fi and settings have to be entered again. Shades, rooms and groups stay. Then update the application through the web UI as described above.
 
 # Functionality
 After you get this up and running you will have the ability to interact with your shades using the built-in web interface, socket interface, and MQTT.  There is also a full [Home Assistant integration](https://github.com/rstrouse/ESPSomfy-RTS-HA) that can be installed through HACS that can control your shades remotely and provide automations.
@@ -57,7 +95,7 @@ To unset a favorite perform the long press on the my button to open the favorite
 # Getting Started
 To get started you must create a radio device.  The wiki contains full instructions on how to get this up and running.  You don't need a soldering iron to make this project work. Dupont connections between the radio and the ESP32 will suffice.  However, I have also included some instructions on how to make an inconspicuous radio enclosure for a few bucks.  Here is the [Simple Hardware Guide](https://github.com/rstrouse/ESPSomfy-RTS/wiki/Simple-ESPSomfy-RTS-device)
 
-Next you need to get the initial firmware installed onto the ESP32.  Once the firmware built and installed for your ESP32.  The firmware installation process is a matter of uploading the onboard file to your ESP32.  You will find the firmware guide in the wiki [Firmware Guide](https://github.com/rstrouse/ESPSomfy-RTS/wiki/Installing-the-Firmware)
+Next you need to get the initial firmware installed onto the ESP32.  Once the firmware built and installed for your ESP32.  The firmware installation process is a matter of uploading the onboard file to your ESP32.  See [Installing and flashing](#installing-and-flashing) above, or the [Firmware Guide](https://github.com/rstrouse/ESPSomfy-RTS/wiki/Installing-the-Firmware) in the wiki
 
 Once you have your hardware built, the only thing left to do is connect the ESP32 to your network and begin pariing your shades.  The software guide in the wiki will walk you through pairing your shades, linking remotes, and configuring your shades.  The wiki also includes a comprehensive software guide that you can use to configure your shades.  The good news is that this process is pretty easy to follow and you can be up and running very quickly.
 
