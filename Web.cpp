@@ -53,6 +53,78 @@ static bool __attribute__((noinline)) parseBody(WebServer &srv, JsonDocument &do
   return !err;
 }
 
+// Limits how fast the PIN or password can be guessed. Guesses can come through /login or as apikey
+// headers computed for a guessed PIN, so both count. Each client gets AUTH_FREE_FAILURES attempts and
+// then has to wait AUTH_BASE_LOCKOUT, doubling with every further failure up to AUTH_MAX_LOCKOUT.
+// A shared budget of failures slows down clients that spread their guesses over many addresses.
+#define AUTH_CLIENTS 8
+#define AUTH_FREE_FAILURES 5
+#define AUTH_BASE_LOCKOUT 30000UL
+#define AUTH_MAX_LOCKOUT 600000UL
+#define AUTH_FORGET 3600000UL
+#define AUTH_BUDGET 20
+#define AUTH_BUDGET_REFILL 30000UL
+struct auth_client_t {
+  uint32_t ip;
+  uint32_t lastFail;
+  uint8_t fails;
+};
+static auth_client_t _authClients[AUTH_CLIENTS] = {};
+static uint8_t _authBudget = AUTH_BUDGET;
+static uint32_t _authRefilled = 0;
+static auth_client_t *authClient(uint32_t ip) {
+  for(auth_client_t &c : _authClients)
+    if(c.fails && c.ip == ip) return &c;
+  return nullptr;
+}
+// Returns the seconds the client has to wait before it may try again, 0 when it may try now.
+static uint32_t authWait(const IPAddress &addr) {
+  uint32_t now = millis();
+  if(_authBudget >= AUTH_BUDGET) _authRefilled = now;
+  while(_authBudget < AUTH_BUDGET && now - _authRefilled >= AUTH_BUDGET_REFILL) {
+    _authBudget++;
+    _authRefilled += AUTH_BUDGET_REFILL;
+  }
+  uint32_t wait = _authBudget == 0 ? AUTH_BUDGET_REFILL - (now - _authRefilled) : 0;
+  auth_client_t *c = authClient((uint32_t)addr);
+  if(c) {
+    uint32_t elapsed = now - c->lastFail;
+    if(elapsed >= AUTH_FORGET) c->fails = 0;
+    else if(c->fails >= AUTH_FREE_FAILURES) {
+      uint8_t n = min(c->fails - AUTH_FREE_FAILURES, 5);
+      uint32_t lockout = min(AUTH_BASE_LOCKOUT << n, AUTH_MAX_LOCKOUT);
+      if(lockout > elapsed) wait = max(wait, lockout - elapsed);
+    }
+  }
+  return (wait + 999) / 1000;
+}
+static void authFailed(const IPAddress &addr) {
+  uint32_t ip = (uint32_t)addr;
+  uint32_t now = millis();
+  if(_authBudget > 0) _authBudget--;
+  auth_client_t *c = authClient(ip);
+  if(!c) {
+    // Take a free slot, or else the one with the oldest failure.
+    c = &_authClients[0];
+    for(auth_client_t &s : _authClients) {
+      if(!s.fails) {
+        c = &s;
+        break;
+      }
+      if(now - s.lastFail > now - c->lastFail) c = &s;
+    }
+    c->ip = ip;
+    c->fails = 0;
+  }
+  if(c->fails < 255) c->fails++;
+  c->lastFail = now;
+  LOG_PRINTF("Authentication failed for %s (%u failures)\n", addr.toString().c_str(), c->fails);
+}
+static void authSucceeded(const IPAddress &addr) {
+  auth_client_t *c = authClient((uint32_t)addr);
+  if(c) c->fails = 0;
+}
+
 WebServer apiServer(8081);
 WebServer server(80);
 
@@ -172,21 +244,26 @@ void Web::handleDeserializationError(WebServer &server, DeserializationError &er
 bool Web::checkAuthentication(WebServer &server, bool cfg) {
   if(settings.Security.type == security_types::None) return true;
   if(!cfg && (settings.Security.permissions & static_cast<uint8_t>(security_permissions::ConfigOnly)) == 0x01) return true;
-  if(!server.hasHeader("apikey")) return false;
+  // The web UI sends an empty apikey before the login. That is not a guess.
+  String key = server.header("apikey");
+  if(key.length() == 0) return false;
+  IPAddress ip = server.client().remoteIP();
+  if(authWait(ip) > 0) return false;
   char token[65];
   memset(token, 0x00, sizeof(token));
-  this->createAPIToken(server.client().remoteIP(), token);
+  this->createAPIToken(ip, token);
   // Compare in constant time so the response time does not leak how much of the key matched.
-  String key = server.header("apikey");
-  if(key.length() != strlen(token)) return false;
-  uint8_t diff = 0;
-  for(size_t i = 0; i < key.length(); i++) diff |= key[i] ^ token[i];
+  uint8_t diff = key.length() != strlen(token);
+  for(size_t i = 0; i < key.length() && i < sizeof(token); i++) diff |= key[i] ^ token[i];
+  if(diff) authFailed(ip);
+  else authSucceeded(ip);
   return diff == 0;
 }
 bool Web::isAuthenticated(WebServer &server, bool cfg) {
   if(this->checkAuthentication(server, cfg)) return true;
   DEBUG_PRINTF("Not authenticated: %s\n", server.uri().c_str());
-  sendError(server, 401, "Unauthorized");
+  if(authWait(server.client().remoteIP()) > 0) sendError(server, 429, "Too many failed login attempts");
+  else sendError(server, 401, "Unauthorized");
   return false;
 }
 bool Web::createAPIPinToken(const IPAddress ipAddress, const char *pin, char *token) {
@@ -243,6 +320,14 @@ void Web::handleLogin(WebServer &server) {
       return;
     }
     DEBUG_PRINTLN("Web logging in...");
+    IPAddress ip = server.client().remoteIP();
+    uint32_t wait = authWait(ip);
+    if(wait > 0) {
+      snprintf(g_content, sizeof(g_content), "{\"type\":%u,\"success\":false,\"retryAfter\":%u,\"msg\":\"Too many failed attempts. Try again in %u seconds.\"}",
+        static_cast<uint8_t>(settings.Security.type), wait, wait);
+      server.send(200, _encoding_json, g_content);
+      return;
+    }
     char username[33] = "";
     char password[33] = "";
     char pin[5] = "";
@@ -273,22 +358,26 @@ void Web::handleLogin(WebServer &server) {
       if(strlen(pin) == 0 || strcmp(pin, settings.Security.pin) != 0) {
         obj["success"] = false;
         obj["msg"] = "Invalid Pin Entry";
+        authFailed(ip);
       }
       else {
         obj["success"] = true;
         obj["msg"] = "Login successful";
         obj["apiKey"] = token;
+        authSucceeded(ip);
       }
     }
     else if(settings.Security.type == security_types::Password) {
       if(strlen(username) == 0 || strlen(password) == 0 || strcmp(username, settings.Security.username) != 0 || strcmp(password, settings.Security.password) != 0) {
         obj["success"] = false;
         obj["msg"] = "Invalid username or password";
+        authFailed(ip);
       }
       else {
         obj["success"] = true;
         obj["msg"] = "Login successful";
         obj["apiKey"] = token;
+        authSucceeded(ip);
       }
     }
     serializeJson(doc, g_content);
