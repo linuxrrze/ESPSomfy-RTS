@@ -43,9 +43,11 @@ static void _rtrim(char *str) {
   while(e >= 0 && (str[e] == ' ' || str[e] == '\n' || str[e] == '\r' || str[e] == '\t' || str[e] == '"')) {str[e] = '\0'; e--;}
 }
 [[maybe_unused]] static void _trim(char *str) { _ltrim(str); _rtrim(str); }
+// True once millis() has passed the deadline, also across the millis() rollover every 49.7 days.
+[[maybe_unused]] static bool timeReached(uint32_t deadline) { return (int32_t)(millis() - deadline) > 0; }
 struct rebootDelay_t {
   bool reboot = false;
-  int rebootTime = 0;
+  uint32_t rebootTime = 0;
   bool closed = false;
 };
 [[maybe_unused]] static bool toBoolean(const char *str, bool def) {

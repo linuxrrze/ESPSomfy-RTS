@@ -975,7 +975,7 @@ void SomfyShade::setGPIOs() {
     }
   }
   else if(this->proto == radio_proto::GP_Remote) {
-    if(millis() > this->gpioRelease) {
+    if(timeReached(this->gpioRelease)) {
       //uint8_t p_on = (this->gpioFlags & (uint8_t)gpio_flags_t::LowLevelTrigger) == 0x00 ? HIGH : LOW;
       uint8_t p_off = (this->gpioFlags & (uint8_t)gpio_flags_t::LowLevelTrigger) == 0x00 ? LOW : HIGH;
       digitalWrite(this->gpioUp, p_off);
@@ -2066,7 +2066,7 @@ void SomfyShade::processWaitingFrame() {
     return;
   }
   if(this->lastFrame.processed) return;
-  if(this->lastFrame.await > 0 && (millis() > this->lastFrame.await)) {
+  if(this->lastFrame.await > 0 && timeReached(this->lastFrame.await)) {
     somfy_commands cmd = this->transformCommand(this->lastFrame.cmd);
     switch(cmd) {
       case somfy_commands::StepUp:
@@ -5086,7 +5086,7 @@ void Transceiver::loop() {
   else {
     somfy.processWaitingFrame();
     // Check to see if there is anything in the buffer
-    if(tx_queue.length > 0 && millis() > tx_queue.delay_time && somfy_rx.cpt_synchro_hw == 0) {
+    if(tx_queue.length > 0 && timeReached(tx_queue.delay_time) && somfy_rx.cpt_synchro_hw == 0) {
       this->beginTransmit();
       somfy_tx_t tx;
       

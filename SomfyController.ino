@@ -46,7 +46,7 @@ void setup() {
 void loop() {
   // put your main code here, to run repeatedly:
   //uint32_t heap = ESP.getFreeHeap();
-  if(rebootDelay.reboot && millis() > rebootDelay.rebootTime) {
+  if(rebootDelay.reboot && timeReached(rebootDelay.rebootTime)) {
     DEBUG_PRINT("Rebooting after ");
     DEBUG_PRINT(rebootDelay.rebootTime);
     DEBUG_PRINTLN("ms");
@@ -79,7 +79,7 @@ void loop() {
     esp_task_wdt_reset();
     timing = millis();
   }
-  if(rebootDelay.reboot && millis() > rebootDelay.rebootTime) {
+  if(rebootDelay.reboot && timeReached(rebootDelay.rebootTime)) {
     net.end();
     ESP.restart();
   }

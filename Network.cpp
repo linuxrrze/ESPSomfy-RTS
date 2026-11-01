@@ -128,7 +128,7 @@ void Network::loop() {
     }
     else if(this->connected() && ctype == conn_types_t::wifi && settings.WIFI.roaming) {
       // Periodically look for a roaming AP.
-      if(millis() > SSID_SCAN_INTERVAL + this->lastWifiScan) {
+      if(millis() - this->lastWifiScan > SSID_SCAN_INTERVAL) {
         //DEBUG_PRINTLN("Started scan for access points");
         if(!_apScanning && WiFi.scanNetworks(true, false, true, 300, 0, settings.WIFI.ssid) == -1) {
           _apScanning = true;
@@ -522,7 +522,7 @@ bool Network::connect(conn_types_t ctype) {
     // Here we need to call the connect to ethernet.
     this->connectWired();
   }
-  else if(ctype == conn_types_t::ap || (!this->connected() && millis() > this->disconnectTime + CONNECT_TIMEOUT)) {
+  else if(ctype == conn_types_t::ap || (!this->connected() && millis() - this->disconnectTime > CONNECT_TIMEOUT)) {
     if(!this->softAPOpened && !this->openingSoftAP) {
       this->disconnectTime = millis();
       this->openSoftAP();
@@ -588,7 +588,7 @@ bool Network::connected() {
   return false;
 }
 bool Network::connecting() {
-  if(this->_connecting && millis() > this->connectStart + CONNECT_TIMEOUT) this->_connecting = false; 
+  if(this->_connecting && millis() - this->connectStart > CONNECT_TIMEOUT) this->_connecting = false; 
   return this->_connecting; 
 }
 void Network::clearConnecting() { this->_connecting = false; }

@@ -5,7 +5,7 @@
 #include "ArduinoJsonConfig.h"
 class MQTTClass {
   public:
-    uint64_t lastConnect = 0;
+    uint32_t lastConnect = 0;
     bool suspended = false;
     char clientId[32] = {'\0'};
     bool begin();
