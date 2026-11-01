@@ -23,6 +23,9 @@ env:
 
 jobs:
   littlefs:
+    # Uploads to the release. Forks default to a read-only workflow token.
+    permissions:
+      contents: write
     name: LittleFS
     runs-on: ubuntu-latest
 
