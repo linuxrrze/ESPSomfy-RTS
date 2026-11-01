@@ -144,7 +144,6 @@ class SecuritySettings: BaseSettings {
     bool save();
     bool load();
     void print();
-    bool toJSON(JsonObject &obj);
     void toJSON(JsonResponse &json);
     bool fromJSON(JsonObject &obj);
 };

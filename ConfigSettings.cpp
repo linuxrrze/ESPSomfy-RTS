@@ -566,14 +566,6 @@ bool SecuritySettings::fromJSON(JsonObject &obj) {
   if(obj.containsKey("permissions")) this->permissions = obj["permissions"];
   return true;
 }
-bool SecuritySettings::toJSON(JsonObject &obj) {
-  obj["type"] = static_cast<uint8_t>(this->type);
-  obj["username"] = this->username;
-  obj["password"] = this->password;
-  obj["pin"] = this->pin;
-  obj["permissions"] = this->permissions;
-  return true;  
-}
 void SecuritySettings::toJSON(JsonResponse &json) {
   json.addElem("type", static_cast<uint8_t>(this->type));
   json.addElem("username", this->username);

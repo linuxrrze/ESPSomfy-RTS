@@ -339,47 +339,43 @@ void Web::handleLogout(WebServer &server) {
   server.sendHeader("Set-Cookie", "ESPSOMFYID=0");
   server.send(301);
 }
+// Sends the result of a login. The apiKey is only included when it succeeded, retryAfter only while
+// the client has to wait.
+static void sendLoginResult(WebServer &srv, bool success, const char *msg, const char *apiKey = nullptr, uint32_t retryAfter = 0) {
+  int len = snprintf(g_content, sizeof(g_content), "{\"type\":%u,\"success\":%s,\"msg\":\"%s\"",
+    static_cast<uint8_t>(settings.Security.type), success ? "true" : "false", msg);
+  if(apiKey) len += snprintf(g_content + len, sizeof(g_content) - len, ",\"apiKey\":\"%s\"", apiKey);
+  if(retryAfter) len += snprintf(g_content + len, sizeof(g_content) - len, ",\"retryAfter\":%u", retryAfter);
+  strlcat(g_content, "}", sizeof(g_content));
+  srv.send(200, _encoding_json, g_content);
+}
 void Web::handleLogin(WebServer &server) {
-    StaticJsonDocument<256> doc;
-    JsonObject obj = doc.to<JsonObject>();
     char token[65];
     memset(&token, 0x00, sizeof(token));
-    this->createAPIToken(server.client().remoteIP(), token);
-    obj["type"] = static_cast<uint8_t>(settings.Security.type);
+    IPAddress ip = server.client().remoteIP();
+    this->createAPIToken(ip, token);
     if(settings.Security.type == security_types::None) {
-      obj["apiKey"] = token;
-      obj["msg"] = "Success";
-      obj["success"] = true;
-      serializeJson(doc, g_content);
-      server.send(200, _encoding_json, g_content);
+      sendLoginResult(server, true, "Success", token);
       return;
     }
     DEBUG_PRINTLN("Web logging in...");
-    IPAddress ip = server.client().remoteIP();
     uint32_t wait = authWait(ip);
     if(wait > 0) {
-      snprintf(g_content, sizeof(g_content), "{\"type\":%u,\"success\":false,\"retryAfter\":%u,\"msg\":\"Too many failed attempts. Try again in %u seconds.\"}",
-        static_cast<uint8_t>(settings.Security.type), wait, wait);
-      server.send(200, _encoding_json, g_content);
+      char msg[64];
+      snprintf(msg, sizeof(msg), "Too many failed attempts. Try again in %u seconds.", wait);
+      sendLoginResult(server, false, msg, nullptr, wait);
       return;
     }
     char username[33] = "";
     char password[33] = "";
     char pin[5] = "";
-    memset(username, 0x00, sizeof(username));
-    memset(password, 0x00, sizeof(password));
-    memset(pin, 0x00, sizeof(pin));
     if(server.hasArg("plain")) {
       DynamicJsonDocument docin(512);
-      if(!parseBody(server, docin)) {
-      return;
-    }
-      else {
-          JsonObject objin = docin.as<JsonObject>();
-          if(objin.containsKey("username") && objin["username"]) strlcpy(username, objin["username"], sizeof(username));
-          if(objin.containsKey("password") && objin["password"]) strlcpy(password, objin["password"], sizeof(password));
-          if(objin.containsKey("pin") && objin["pin"]) strlcpy(pin, objin["pin"], sizeof(pin));
-      }
+      if(!parseBody(server, docin)) return;
+      JsonObject objin = docin.as<JsonObject>();
+      if(objin.containsKey("username") && objin["username"]) strlcpy(username, objin["username"], sizeof(username));
+      if(objin.containsKey("password") && objin["password"]) strlcpy(password, objin["password"], sizeof(password));
+      if(objin.containsKey("pin") && objin["pin"]) strlcpy(pin, objin["pin"], sizeof(pin));
     }
     else {
       if(server.hasArg("username")) strlcpy(username, server.arg("username").c_str(), sizeof(username));
@@ -387,37 +383,24 @@ void Web::handleLogin(WebServer &server) {
       if(server.hasArg("pin")) strlcpy(pin, server.arg("pin").c_str(), sizeof(pin));
     }
     // At this point we should have all the data we need to login.
+    bool success = false;
+    const char *msg = "Invalid login";
     if(settings.Security.type == security_types::PinEntry) {
-      DEBUG_PRINT("Validating pin ");
-      DEBUG_PRINTLN(pin);
-      if(strlen(pin) == 0 || strcmp(pin, settings.Security.pin) != 0) {
-        obj["success"] = false;
-        obj["msg"] = "Invalid Pin Entry";
-        authFailed(ip);
-      }
-      else {
-        obj["success"] = true;
-        obj["msg"] = "Login successful";
-        obj["apiKey"] = token;
-        authSucceeded(ip);
-      }
+      success = strlen(pin) > 0 && strcmp(pin, settings.Security.pin) == 0;
+      if(!success) msg = "Invalid Pin Entry";
     }
     else if(settings.Security.type == security_types::Password) {
-      if(strlen(username) == 0 || strlen(password) == 0 || strcmp(username, settings.Security.username) != 0 || strcmp(password, settings.Security.password) != 0) {
-        obj["success"] = false;
-        obj["msg"] = "Invalid username or password";
-        authFailed(ip);
-      }
-      else {
-        obj["success"] = true;
-        obj["msg"] = "Login successful";
-        obj["apiKey"] = token;
-        authSucceeded(ip);
-      }
+      success = strlen(username) > 0 && strlen(password) > 0 && strcmp(username, settings.Security.username) == 0 && strcmp(password, settings.Security.password) == 0;
+      if(!success) msg = "Invalid username or password";
     }
-    serializeJson(doc, g_content);
-    server.send(200, _encoding_json, g_content);
-    return;
+    if(success) {
+      authSucceeded(ip);
+      sendLoginResult(server, true, "Login successful", token);
+    }
+    else {
+      authFailed(ip);
+      sendLoginResult(server, false, msg);
+    }
 }
 void Web::handleStreamFile(WebServer &server, const char *filename, const char *encoding) {
   if(git.lockFS) {
@@ -1920,14 +1903,7 @@ void Web::begin() {
       if (method == HTTP_POST || method == HTTP_PUT) {
         settings.Security.fromJSON(obj);
         settings.Security.save();
-        char token[65];
-        webServer.createAPIToken(server.client().remoteIP(), token);
-        obj["apiKey"] = token;
-        DynamicJsonDocument sdoc(1024);
-        JsonObject sobj = sdoc.to<JsonObject>();
-        settings.Security.toJSON(sobj);
-        serializeJson(sdoc, g_content);
-        server.send(200, _encoding_json, g_content);
+        sendJson(server, [](JsonResponse &resp, void *) { settings.Security.toJSON(resp); });
       }
       else {
         sendError(server, 201, "Invalid HTTP Method: ");
@@ -1935,11 +1911,7 @@ void Web::begin() {
     }
     });
   onRoute(server, "/getSecurity", []() {
-    DynamicJsonDocument doc(512);
-    JsonObject obj = doc.to<JsonObject>();
-    settings.Security.toJSON(obj);
-    serializeJson(doc, g_content);
-    server.send(200, _encoding_json, g_content);
+    sendJson(server, [](JsonResponse &resp, void *) { settings.Security.toJSON(resp); });
     });
   onRoute(server, "/saveRadio", []() {
     DynamicJsonDocument doc(512);
