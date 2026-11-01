@@ -137,7 +137,7 @@ int16_t GitRepo::getReleases(uint8_t num, bool insecure) {
   main->main = true;
   strcpy(main->version.name, "main");
   strcpy(main->name, "Main");
-  strcpy(main->hwVersions, "32,s3");
+  strcpy(main->hwVersions, "32,s3,c3,s2");
   HTTPClient https;
   https.setReuse(false);
   if(https.begin(sclient, url)) {
