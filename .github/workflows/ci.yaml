@@ -28,6 +28,10 @@ jobs:
       - name: Check out code
         uses: actions/checkout@v7
 
+      - name: Check the version
+        run: |
+          ./tools/version.sh check
+
       - name: Checkout mklittlefs
         uses: actions/checkout@v7
         with:

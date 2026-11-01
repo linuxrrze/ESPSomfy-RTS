@@ -39,6 +39,11 @@ jobs:
       - name: Check out code
         uses: actions/checkout@v7
 
+      - name: Check the version
+        # The tag must match the version in the code, or controllers would offer the update forever.
+        run: |
+          ./tools/version.sh check ${{ github.event.release.tag_name }}
+
       - name: Checkout mklittlefs
         uses: actions/checkout@v7
         with:
