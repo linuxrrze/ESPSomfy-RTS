@@ -46,6 +46,12 @@ static void sendError(WebServer &srv, int code, const char *desc) {
   snprintf(g_content, sizeof(g_content), "{\"status\":\"ERROR\",\"desc\":\"%s\"}", desc);
   srv.send(code, _encoding_json, g_content);
 }
+// Parses the request body into doc. Sends the error response and returns false when that fails.
+static bool __attribute__((noinline)) parseBody(WebServer &srv, JsonDocument &doc) {
+  DeserializationError err = deserializeJson(doc, srv.arg("plain"));
+  if(err) webServer.handleDeserializationError(srv, err);
+  return !err;
+}
 
 WebServer apiServer(8081);
 WebServer server(80);
@@ -245,11 +251,9 @@ void Web::handleLogin(WebServer &server) {
     memset(pin, 0x00, sizeof(pin));
     if(server.hasArg("plain")) {
       DynamicJsonDocument docin(512);
-      DeserializationError err = deserializeJson(docin, server.arg("plain"));
-      if (err) {
-        this->handleDeserializationError(server, err);
-        return;
-      }
+      if(!parseBody(server, docin)) {
+      return;
+    }
       else {
           JsonObject objin = docin.as<JsonObject>();
           if(objin.containsKey("username") && objin["username"]) strlcpy(username, objin["username"], sizeof(username));
@@ -432,11 +436,9 @@ void Web::handleShadeCommand(WebServer& server) {
     else if (server.hasArg("plain")) {
       DEBUG_PRINTLN("Sending Shade Command");
       DynamicJsonDocument doc(512);
-      DeserializationError err = deserializeJson(doc, server.arg("plain"));
-      if (err) {
-        this->handleDeserializationError(server, err);
-        return;
-      }
+      if(!parseBody(server, doc)) {
+      return;
+    }
       else {
         JsonObject obj = doc.as<JsonObject>();
         if (obj.containsKey("shadeId")) shadeId = obj["shadeId"];
@@ -491,11 +493,9 @@ void Web::handleRepeatCommand(WebServer& server) {
     if(server.hasArg("stepSize")) stepSize = atoi(server.arg("stepSize").c_str());
     if(shadeId == 255 && groupId == 255 && server.hasArg("plain")) {
       DynamicJsonDocument doc(512);
-      DeserializationError err = deserializeJson(doc, server.arg("plain"));
-      if (err) {
-        this->handleDeserializationError(server, err);
-        return;
-      }
+      if(!parseBody(server, doc)) {
+      return;
+    }
       else {
         JsonObject obj = doc.as<JsonObject>();
         if (obj.containsKey("shadeId")) shadeId = obj["shadeId"];
@@ -575,11 +575,9 @@ void Web::handleGroupCommand(WebServer &server) {
     else if (server.hasArg("plain")) {
       DEBUG_PRINTLN("Sending Group Command");
       DynamicJsonDocument doc(256);
-      DeserializationError err = deserializeJson(doc, server.arg("plain"));
-      if (err) {
-        this->handleDeserializationError(server, err);
-        return;
-      }
+      if(!parseBody(server, doc)) {
+      return;
+    }
       else {
         JsonObject obj = doc.as<JsonObject>();
         if (obj.containsKey("groupId")) groupId = obj["groupId"];
@@ -630,11 +628,9 @@ void Web::handleTiltCommand(WebServer &server) {
     else if (server.hasArg("plain")) {
       DEBUG_PRINTLN("Sending Shade Tilt Command");
       DynamicJsonDocument doc(256);
-      DeserializationError err = deserializeJson(doc, server.arg("plain"));
-      if (err) {
-        this->handleDeserializationError(server, err);
-        return;
-      }
+      if(!parseBody(server, doc)) {
+      return;
+    }
       else {
         JsonObject obj = doc.as<JsonObject>();
         if (obj.containsKey("shadeId")) shadeId = obj["shadeId"];
@@ -697,11 +693,9 @@ void Web::handleRoom(WebServer &server) {
     if (server.hasArg("plain")) {
       DEBUG_PRINTLN("Updating a room");
       DynamicJsonDocument doc(512);
-      DeserializationError err = deserializeJson(doc, server.arg("plain"));
-      if (err) {
-        this->handleDeserializationError(server, err);
-        return;
-      }
+      if(!parseBody(server, doc)) {
+      return;
+    }
       else {
         JsonObject obj = doc.as<JsonObject>();
         if (obj.containsKey("roomId")) {
@@ -757,11 +751,9 @@ void Web::handleShade(WebServer &server) {
     if (server.hasArg("plain")) {
       DEBUG_PRINTLN("Updating a shade");
       DynamicJsonDocument doc(512);
-      DeserializationError err = deserializeJson(doc, server.arg("plain"));
-      if (err) {
-        this->handleDeserializationError(server, err);
-        return;
-      }
+      if(!parseBody(server, doc)) {
+      return;
+    }
       else {
         JsonObject obj = doc.as<JsonObject>();
         if (obj.containsKey("shadeId")) {
@@ -817,11 +809,9 @@ void Web::handleGroup(WebServer &server) {
     if (server.hasArg("plain")) {
       DEBUG_PRINTLN("Updating a group");
       DynamicJsonDocument doc(512);
-      DeserializationError err = deserializeJson(doc, server.arg("plain"));
-      if (err) {
-        this->handleDeserializationError(server, err);
-        return;
-      }
+      if(!parseBody(server, doc)) {
+      return;
+    }
       else {
         JsonObject obj = doc.as<JsonObject>();
         if (obj.containsKey("groupId")) {
@@ -929,9 +919,7 @@ void Web::handleSetPositions(WebServer &server) {
   int8_t tiltPos = (server.hasArg("tiltPosition")) ? atoi(server.arg("tiltPosition").c_str()) : -1;
   if(server.hasArg("plain")) {
     DynamicJsonDocument doc(512);
-    DeserializationError err = deserializeJson(doc, server.arg("plain"));
-    if (err) {
-      this->handleDeserializationError(server, err);
+    if(!parseBody(server, doc)) {
       return;
     }
     else {
@@ -969,9 +957,7 @@ void Web::handleSetSensor(WebServer &server) {
   int8_t repeat = (server.hasArg("repeat")) ? atoi(server.arg("repeat").c_str()) : -1;
   if(server.hasArg("plain")) {
     DynamicJsonDocument doc(512);
-    DeserializationError err = deserializeJson(doc, server.arg("plain"));
-    if (err) {
-      this->handleDeserializationError(server, err);
+    if(!parseBody(server, doc)) {
       return;
     }
     else {
@@ -1297,11 +1283,9 @@ void Web::begin() {
     if (method == HTTP_POST || method == HTTP_PUT) {
       DEBUG_PRINTLN("Adding a room");
       DynamicJsonDocument doc(512);
-      DeserializationError err = deserializeJson(doc, server.arg("plain"));
-      if (err) {
-        webServer.handleDeserializationError(server, err);
-        return;
-      }
+      if(!parseBody(server, doc)) {
+      return;
+    }
       else {
         JsonObject obj = doc.as<JsonObject>();
         DEBUG_PRINTLN("Counting rooms");
@@ -1337,11 +1321,9 @@ void Web::begin() {
     if (method == HTTP_POST || method == HTTP_PUT) {
       DEBUG_PRINTLN("Adding a shade");
       DynamicJsonDocument doc(1024);
-      DeserializationError err = deserializeJson(doc, server.arg("plain"));
-      if (err) {
-        webServer.handleDeserializationError(server, err);
-        return;
-      }
+      if(!parseBody(server, doc)) {
+      return;
+    }
       else {
         JsonObject obj = doc.as<JsonObject>();
         DEBUG_PRINTLN("Counting shades");
@@ -1378,11 +1360,9 @@ void Web::begin() {
     if (method == HTTP_POST || method == HTTP_PUT) {
       DEBUG_PRINTLN("Adding a group");
       DynamicJsonDocument doc(512);
-      DeserializationError err = deserializeJson(doc, server.arg("plain"));
-      if (err) {
-        webServer.handleDeserializationError(server, err);
-        return;
-      }
+      if(!parseBody(server, doc)) {
+      return;
+    }
       else {
         JsonObject obj = doc.as<JsonObject>();
         DEBUG_PRINTLN("Counting shades");
@@ -1460,11 +1440,9 @@ void Web::begin() {
       if (server.hasArg("plain")) {
         DEBUG_PRINTLN("Updating a room");
         DynamicJsonDocument doc(512);
-        DeserializationError err = deserializeJson(doc, server.arg("plain"));
-        if (err) {
-          webServer.handleDeserializationError(server, err);
-          return;
-        }
+        if(!parseBody(server, doc)) {
+      return;
+    }
         else {
           JsonObject obj = doc.as<JsonObject>();
           if (obj.containsKey("roomId")) {
@@ -1495,11 +1473,9 @@ void Web::begin() {
       if (server.hasArg("plain")) {
         DEBUG_PRINTLN("Updating a shade");
         DynamicJsonDocument doc(1024);
-        DeserializationError err = deserializeJson(doc, server.arg("plain"));
-        if (err) {
-          webServer.handleDeserializationError(server, err);
-          return;
-        }
+        if(!parseBody(server, doc)) {
+      return;
+    }
         else {
           JsonObject obj = doc.as<JsonObject>();
           if (obj.containsKey("shadeId")) {
@@ -1535,11 +1511,9 @@ void Web::begin() {
       if (server.hasArg("plain")) {
         DEBUG_PRINTLN("Updating a group");
         DynamicJsonDocument doc(512);
-        DeserializationError err = deserializeJson(doc, server.arg("plain"));
-        if (err) {
-          webServer.handleDeserializationError(server, err);
-          return;
-        }
+        if(!parseBody(server, doc)) {
+      return;
+    }
         else {
           JsonObject obj = doc.as<JsonObject>();
           if (obj.containsKey("groupId")) {
@@ -1575,11 +1549,9 @@ void Web::begin() {
       }
       else if (server.hasArg("plain")) {
         DynamicJsonDocument doc(256);
-        DeserializationError err = deserializeJson(doc, server.arg("plain"));
-        if (err) {
-          webServer.handleDeserializationError(server, err);
-          return;
-        }
+        if(!parseBody(server, doc)) {
+      return;
+    }
         else {
           JsonObject obj = doc.as<JsonObject>();
           if (obj.containsKey("shadeId")) shadeId = obj["shadeId"];
@@ -1618,11 +1590,9 @@ void Web::begin() {
       if (server.hasArg("plain")) {
         // Its coming in the body.
         StaticJsonDocument<129> doc;
-        DeserializationError err = deserializeJson(doc, server.arg("plain"));
-        if (err) {
-          webServer.handleDeserializationError(server, err);
-          return;
-        }
+        if(!parseBody(server, doc)) {
+      return;
+    }
         else {
           JsonObject obj = doc.as<JsonObject>();
           if (obj.containsKey("shadeId")) shadeId = obj["shadeId"];
@@ -1692,11 +1662,9 @@ void Web::begin() {
       if (server.hasArg("plain")) {
         // Its coming in the body.
         DynamicJsonDocument doc(512);
-        DeserializationError err = deserializeJson(doc, server.arg("plain"));
-        if (err) {
-          webServer.handleDeserializationError(server, err);
-          return;
-        }
+        if(!parseBody(server, doc)) {
+      return;
+    }
         else {
           JsonObject obj = doc.as<JsonObject>();
           if (obj.containsKey("shadeId")) shadeId = obj["shadeId"];
@@ -1733,11 +1701,9 @@ void Web::begin() {
       if (server.hasArg("plain")) {
         DEBUG_PRINTLN("Linking a repeater");
         DynamicJsonDocument doc(512);
-        DeserializationError err = deserializeJson(doc, server.arg("plain"));
-        if (err) {
-          webServer.handleDeserializationError(server, err);
-          return;
-        }
+        if(!parseBody(server, doc)) {
+      return;
+    }
         else {
           JsonObject obj = doc.as<JsonObject>();
           if (obj.containsKey("address")) address = obj["address"];
@@ -1767,11 +1733,9 @@ void Web::begin() {
       if (server.hasArg("plain")) {
         DEBUG_PRINTLN("Unlinking a repeater");
         DynamicJsonDocument doc(512);
-        DeserializationError err = deserializeJson(doc, server.arg("plain"));
-        if (err) {
-          webServer.handleDeserializationError(server, err);
-          return;
-        }
+        if(!parseBody(server, doc)) {
+      return;
+    }
         else {
           JsonObject obj = doc.as<JsonObject>();
           if (obj.containsKey("address")) address = obj["address"];
@@ -1800,11 +1764,9 @@ void Web::begin() {
       // We are updating an existing shade by adding a linked remote.
       if (server.hasArg("plain")) {
         DynamicJsonDocument doc(512);
-        DeserializationError err = deserializeJson(doc, server.arg("plain"));
-        if (err) {
-          webServer.handleDeserializationError(server, err);
-          return;
-        }
+        if(!parseBody(server, doc)) {
+      return;
+    }
         else {
           JsonObject obj = doc.as<JsonObject>();
           if (obj.containsKey("shadeId")) {
@@ -1838,11 +1800,9 @@ void Web::begin() {
       if (server.hasArg("plain")) {
         DEBUG_PRINTLN("Linking a remote");
         DynamicJsonDocument doc(512);
-        DeserializationError err = deserializeJson(doc, server.arg("plain"));
-        if (err) {
-          webServer.handleDeserializationError(server, err);
-          return;
-        }
+        if(!parseBody(server, doc)) {
+      return;
+    }
         else {
           JsonObject obj = doc.as<JsonObject>();
           if (obj.containsKey("shadeId")) {
@@ -1876,11 +1836,9 @@ void Web::begin() {
       if (server.hasArg("plain")) {
         DEBUG_PRINTLN("Linking a shade to a group");
         DynamicJsonDocument doc(512);
-        DeserializationError err = deserializeJson(doc, server.arg("plain"));
-        if (err) {
-          webServer.handleDeserializationError(server, err);
-          return;
-        }
+        if(!parseBody(server, doc)) {
+      return;
+    }
         else {
           JsonObject obj = doc.as<JsonObject>();
           uint8_t shadeId = obj.containsKey("shadeId") ? obj["shadeId"] : 0;
@@ -1979,11 +1937,9 @@ void Web::begin() {
       else if (server.hasArg("plain")) {
         DEBUG_PRINTLN("Deleting a Room");
         DynamicJsonDocument doc(256);
-        DeserializationError err = deserializeJson(doc, server.arg("plain"));
-        if (err) {
-          webServer.handleDeserializationError(server, err);
-          return;
-        }
+        if(!parseBody(server, doc)) {
+      return;
+    }
         else {
           JsonObject obj = doc.as<JsonObject>();
           if (obj.containsKey("roomId")) roomId = obj["roomId"];
@@ -2009,11 +1965,9 @@ void Web::begin() {
       else if (server.hasArg("plain")) {
         DEBUG_PRINTLN("Deleting a shade");
         DynamicJsonDocument doc(256);
-        DeserializationError err = deserializeJson(doc, server.arg("plain"));
-        if (err) {
-          webServer.handleDeserializationError(server, err);
-          return;
-        }
+        if(!parseBody(server, doc)) {
+      return;
+    }
         else {
           JsonObject obj = doc.as<JsonObject>();
           if (obj.containsKey("shadeId")) shadeId = obj["shadeId"];
@@ -2042,11 +1996,9 @@ void Web::begin() {
       else if (server.hasArg("plain")) {
         DEBUG_PRINTLN("Deleting a group");
         DynamicJsonDocument doc(256);
-        DeserializationError err = deserializeJson(doc, server.arg("plain"));
-        if (err) {
-          webServer.handleDeserializationError(server, err);
-          return;
-        }
+        if(!parseBody(server, doc)) {
+      return;
+    }
         else {
           JsonObject obj = doc.as<JsonObject>();
           if (obj.containsKey("groupId")) groupId = obj["groupId"];
@@ -2301,11 +2253,9 @@ void Web::begin() {
       }
       else if (server.hasArg("plain")) {
         StaticJsonDocument<128> doc;
-        DeserializationError err = deserializeJson(doc, server.arg("plain"));
-        if (err) {
-          webServer.handleDeserializationError(server, err);
-          return;
-        }
+        if(!parseBody(server, doc)) {
+      return;
+    }
         else {
           JsonObject obj = doc.as<JsonObject>();
           String scmd;
@@ -2331,9 +2281,7 @@ void Web::begin() {
     DEBUG_PRINT("Plain: ");
     DEBUG_PRINT(server.method());
     DEBUG_PRINTLN(server.arg("plain"));
-    DeserializationError err = deserializeJson(doc, server.arg("plain"));
-    if (err) {
-      webServer.handleDeserializationError(server, err);
+    if(!parseBody(server, doc)) {
       return;
     }
     else {
@@ -2416,9 +2364,7 @@ void Web::begin() {
   onRoute(server, "/setIP", []() {
     DEBUG_PRINTLN("Setting IP...");
     DynamicJsonDocument doc(1024);
-    DeserializationError err = deserializeJson(doc, server.arg("plain"));
-    if (err) {
-      webServer.handleDeserializationError(server, err);
+    if(!parseBody(server, doc)) {
       return;
     }
     else {
@@ -2437,9 +2383,7 @@ void Web::begin() {
   onRoute(server, "/connectwifi", []() {
     DEBUG_PRINTLN("Settings WIFI connection...");
     DynamicJsonDocument doc(512);
-    DeserializationError err = deserializeJson(doc, server.arg("plain"));
-    if (err) {
-      webServer.handleDeserializationError(server, err);
+    if(!parseBody(server, doc)) {
       return;
     }
     else {
@@ -2532,9 +2476,7 @@ void Web::begin() {
     });
   onRoute(server, "/connectmqtt", []() {
     DynamicJsonDocument doc(1024);
-    DeserializationError err = deserializeJson(doc, server.arg("plain"));
-    if (err) {
-      webServer.handleDeserializationError(server, err);
+    if(!parseBody(server, doc)) {
       return;
     }
     else {
@@ -2627,9 +2569,7 @@ void Web::begin() {
     DEBUG_PRINT("Plain: ");
     DEBUG_PRINT(server.method());
     DEBUG_PRINTLN(server.arg("plain"));
-    DeserializationError err = deserializeJson(doc, server.arg("plain"));
-    if (err) {
-      webServer.handleDeserializationError(server, err);
+    if(!parseBody(server, doc)) {
       return;
     }
     else {
@@ -2657,9 +2597,7 @@ void Web::begin() {
     DEBUG_PRINT("Plain: ");
     DEBUG_PRINT(server.method());
     DEBUG_PRINTLN(server.arg("plain"));
-    DeserializationError err = deserializeJson(doc, server.arg("plain"));
-    if (err) {
-      webServer.handleDeserializationError(server, err);
+    if(!parseBody(server, doc)) {
       return;
     }
     else {
@@ -2687,9 +2625,7 @@ void Web::begin() {
     DEBUG_PRINT("Plain: ");
     DEBUG_PRINT(server.method());
     DEBUG_PRINTLN(server.arg("plain"));
-    DeserializationError err = deserializeJson(doc, server.arg("plain"));
-    if (err) {
-      webServer.handleDeserializationError(server, err);
+    if(!parseBody(server, doc)) {
       return;
     }
     else {
