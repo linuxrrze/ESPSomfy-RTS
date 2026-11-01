@@ -4223,6 +4223,7 @@ class Somfy {
 var somfy = new Somfy();
 class MQTT {
     initialized = false;
+    caCert = '';
     init() { this.initialized = true; }
     async loadMQTT() {
         getJSONSync('/mqttsettings', (err, settings) => {
@@ -4230,10 +4231,56 @@ class MQTT {
                 console.log(err);
             else {
                 console.log(settings);
+                // Settings saved before TLS was supported can hold other protocol values.
+                if (settings.protocol !== 'MQTTS') settings.protocol = 'MQTT';
                 ui.toElement(document.getElementById('divMQTT'), { mqtt: settings });
                 document.getElementById('divDiscoveryTopic').style.display = settings.pubDisco ? '' : 'none';
+                this.showTlsOptions();
+                this.caCert = '';
+                document.getElementById('fldMqttCACert').value = '';
+                if (settings.caCertLength > 0) {
+                    getText('/mqttcacert', (err, pem) => {
+                        if (err) console.log(err);
+                        else document.getElementById('fldMqttCACert').value = this.caCert = pem;
+                    });
+                }
             }
         });
+    }
+    onProtocolChanged() {
+        // Switch to the default port of the protocol unless another port was entered.
+        let port = document.getElementById('fldMqttPort');
+        let tls = document.getElementById('selMqttProtocol').value === 'MQTTS';
+        if (tls && port.value === '1883') port.value = '8883';
+        else if (!tls && port.value === '8883') port.value = '1883';
+        this.showTlsOptions();
+    }
+    showTlsOptions() {
+        let tls = document.getElementById('selMqttProtocol').value === 'MQTTS';
+        let mode = parseInt(document.getElementById('selMqttTlsVerify').value, 10);
+        document.getElementById('divMqttTls').style.display = tls ? '' : 'none';
+        document.getElementById('divMqttFingerprint').style.display = mode === 3 ? '' : 'none';
+        document.getElementById('divMqttCACert').style.display = mode === 2 ? '' : 'none';
+        document.getElementById('divMqttTlsHint').style.display = mode === 0 ? 'none' : '';
+    }
+    saveCACert(pem, cb) {
+        // Sent as plain text because the certificate does not fit the JSON body of /connectmqtt.
+        let overlay = ui.waitMessage(document.getElementById('divContainer'));
+        let xhr = new XMLHttpRequest();
+        xhr.open('PUT', baseUrl.length > 0 ? `${baseUrl}/mqttcacert` : '/mqttcacert', true);
+        xhr.responseType = 'json';
+        xhr.setRequestHeader('Content-Type', 'text/plain');
+        xhr.setRequestHeader('apikey', security.apiKey);
+        xhr.onload = () => {
+            overlay.remove();
+            if (xhr.status === 200) cb(null, xhr.response);
+            else cb(Object.assign({ htmlError: xhr.status, service: 'PUT /mqttcacert' }, xhr.response || {}), null);
+        };
+        xhr.onerror = () => {
+            overlay.remove();
+            cb({ htmlError: 500, service: 'PUT /mqttcacert', desc: 'Unable to save the CA certificate' }, null);
+        };
+        xhr.send(pem);
     }
     connectMQTT() {
         let obj = ui.fromElement(document.getElementById('divMQTT'));
@@ -4263,11 +4310,42 @@ class MQTT {
                 ui.errorMessage('Invalid Root Topic').querySelector('.sub-message').innerHTML = 'The maximum length of the root topic is 64 characters.';
                 return;
             }
+            if (obj.mqtt.protocol === 'MQTTS' && obj.mqtt.tlsVerify === 3) {
+                let hex = (obj.mqtt.fingerprint || '').replace(/[\s:]/g, '');
+                if (!/^[0-9a-fA-F]{64}$/.test(hex)) {
+                    ui.errorMessage('Invalid Fingerprint').querySelector('.sub-message').innerHTML = 'Enter the SHA-256 fingerprint of the broker certificate as 64 hex digits, optionally separated by colons.';
+                    return;
+                }
+            }
         }
-        putJSONSync('/connectmqtt', obj.mqtt, (err, response) => {
-            if (err) ui.serviceError(err);
-            console.log(response);
-        });
+        let pem = document.getElementById('fldMqttCACert').value.trim();
+        let saveCA = obj.mqtt.protocol === 'MQTTS' && obj.mqtt.tlsVerify === 2;
+        if (obj.mqtt.enabled && saveCA) {
+            if (pem.indexOf('-----BEGIN CERTIFICATE-----') === -1) {
+                ui.errorMessage('Invalid CA Certificate').querySelector('.sub-message').innerHTML = 'Paste the CA certificate of the broker in PEM format, starting with -----BEGIN CERTIFICATE-----.';
+                return;
+            }
+            if (pem.length > 4000) {
+                ui.errorMessage('Invalid CA Certificate').querySelector('.sub-message').innerHTML = 'The CA certificate can have at most 4000 characters.';
+                return;
+            }
+        }
+        let save = () => {
+            putJSONSync('/connectmqtt', obj.mqtt, (err, response) => {
+                if (err) ui.serviceError(err);
+                console.log(response);
+            });
+        };
+        if (saveCA && pem !== this.caCert.trim()) {
+            this.saveCACert(pem, (err, response) => {
+                if (err) ui.serviceError(err);
+                else {
+                    this.caCert = pem;
+                    save();
+                }
+            });
+        }
+        else save();
     }
 }
 var mqtt = new MQTT();

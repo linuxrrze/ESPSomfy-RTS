@@ -15,6 +15,7 @@
 #include "Web.h"
 #include "WResp.h"
 #include "Network.h"
+#include "MQTT.h"
 
 
 
@@ -25,6 +26,7 @@ extern SomfyShadeController somfy;
 extern rebootDelay_t rebootDelay;
 extern Web webServer;
 extern Network net;
+extern MQTTClass mqtt;
 
 
 
@@ -35,6 +37,15 @@ static void setTrust(WiFiClientSecure &client, bool insecure) {
   if(insecure) client.setInsecure();
   else client.setCACertBundle(ca_bundle);
 }
+// Two TLS sessions at once need more heap than is reliably free, so an MQTT TLS connection is
+// closed while GitHub is contacted and reopened when this goes out of scope.
+class MQTTTLSPause {
+  public:
+    MQTTTLSPause() : _paused(mqtt.pauseTLS()) {}
+    ~MQTTTLSPause() { if(this->_paused) mqtt.resume(); }
+  private:
+    bool _paused;
+};
 // True when the last connection failed because the server certificate could not be verified.
 static bool certFailed(WiFiClientSecure &client) {
   char msg[64];
@@ -111,6 +122,7 @@ void GitRelease::toJSON(JsonResponse &json) {
 #define ERR_CLIENT_OFFSET -50
 
 int16_t GitRepo::getReleases(uint8_t num, bool insecure) {
+  MQTTTLSPause pause;
   WiFiClientSecure sclient;
   setTrust(sclient, insecure);
   sclient.setHandshakeTimeout(3);
@@ -306,6 +318,7 @@ void GitUpdater::checkForUpdate() {
   DEBUG_PRINTLN("Check github for updates...");
   
   this->status = GIT_STATUS_CHECK;
+  MQTTTLSPause pause;
   settings.printAvailHeap();  
   this->lastCheck = millis();
   if(this->checkInternet() == 0) {
@@ -500,6 +513,7 @@ bool GitUpdater::recoverFilesystem() {
 bool GitUpdater::endUpdate() { return true; }
 int8_t GitUpdater::downloadFile() {
   DEBUG_PRINTF("Begin update %s\n", this->currentFile);
+  MQTTTLSPause pause;
   WiFiClientSecure sclient;
   setTrust(sclient, this->insecure);
   HTTPClient https;

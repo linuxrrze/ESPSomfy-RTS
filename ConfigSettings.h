@@ -148,23 +148,39 @@ class SecuritySettings: BaseSettings {
     void toJSON(JsonResponse &json);
     bool fromJSON(JsonObject &obj);
 };
+// How the broker certificate is checked when the MQTT protocol is MQTTS.
+enum class mqtt_tls_verify : byte {
+  None = 0x00,        // Encrypt without checking the certificate.
+  PublicCA = 0x01,    // Root CAs in CABundle.h.
+  CustomCA = 0x02,    // CA certificate uploaded by the user.
+  Fingerprint = 0x03  // SHA-256 fingerprint of the broker certificate.
+};
+// Largest CA certificate (PEM) that can be stored for the MQTT broker.
+#define MQTT_MAX_CA_CERT 4000
 class MQTTSettings: BaseSettings {
   public:
     bool enabled = false;
     bool pubDisco = false;
     char hostname[65] = "ESPSomfyRTS";
-    char protocol[10] = "mqtt://";
+    char protocol[10] = "MQTT"; // MQTT or MQTTS
     uint16_t port = 1883;
     char username[33] = "";
     char password[33] = "";
     char rootTopic[65] = "";
     char discoTopic[65] = "homeassistant";
+    mqtt_tls_verify tlsVerify = mqtt_tls_verify::PublicCA;
+    char fingerprint[96] = ""; // SHA-256 as hex, optionally separated by colons.
     bool begin();
     bool save();
     bool load();
     bool toJSON(JsonObject &obj);
     void toJSON(JsonResponse &json);
     bool fromJSON(JsonObject &obj);
+    bool useTLS();
+    // The CA certificate is kept out of save()/load() and the settings JSON because of its size.
+    size_t caCertLength();
+    bool loadCACert(char *pem, size_t size);
+    bool saveCACert(const char *pem);
 };
 class ConfigSettings: BaseSettings {
   public:

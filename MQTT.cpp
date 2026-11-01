@@ -1,4 +1,5 @@
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
 #include <PubSubClient.h>
 #include "ArduinoJsonConfig.h"
 #include <esp_task_wdt.h>
@@ -8,8 +9,16 @@
 #include "Somfy.h"
 #include "Network.h"
 #include "Utils.h"
+#include "CABundle.h"
+
+#define MQTT_RETRY_MIN 10000
+#define MQTT_RETRY_MAX 120000
 
 WiFiClient tcpClient;
+// Created for every connection attempt so no verification mode from an earlier attempt sticks.
+static WiFiClientSecure *tlsClient = nullptr;
+// setCACert() keeps the pointer, so the CA certificate stays allocated with the client.
+static char *g_caCert = nullptr;
 PubSubClient mqttClient(tcpClient);
 
 #define MQTT_MAX_RESPONSE 2048
@@ -25,6 +34,72 @@ bool MQTTClass::begin() {
   this->suspended = false;
   return true;
 }
+void MQTTClass::resetRetry() {
+  this->retryDelay = MQTT_RETRY_MIN;
+  this->lastConnect = millis() - MQTT_RETRY_MIN;
+}
+bool MQTTClass::pauseTLS() {
+  if(!settings.MQTT.enabled || !settings.MQTT.useTLS() || this->suspended || !mqttClient.connected()) return false;
+  // A clean disconnect does not send the last will.
+  this->publish("status", "offline", true);
+  this->end();
+  return true;
+}
+void MQTTClass::resume() {
+  this->begin();
+  this->resetRetry();
+}
+// Selects plain TCP or TLS for the next connection. For TLS the connection is opened here so the
+// certificate is checked before PubSubClient sends the credentials.
+static bool openTransport() {
+  if(!settings.MQTT.useTLS()) {
+    mqttClient.setClient(tcpClient);
+    return true;
+  }
+  // Detach the previous TLS client before freeing it.
+  mqttClient.setClient(tcpClient);
+  delete tlsClient;
+  free(g_caCert);
+  g_caCert = nullptr;
+  tlsClient = new WiFiClientSecure();
+  // Limit how long a connection attempt blocks the main loop.
+  tlsClient->setTimeout(3);
+  tlsClient->setHandshakeTimeout(4);
+  switch(settings.MQTT.tlsVerify) {
+    case mqtt_tls_verify::PublicCA:
+      tlsClient->setCACertBundle(ca_bundle);
+      break;
+    case mqtt_tls_verify::CustomCA:
+      g_caCert = (char *)malloc(MQTT_MAX_CA_CERT + 1);
+      if(!g_caCert || !settings.MQTT.loadCACert(g_caCert, MQTT_MAX_CA_CERT + 1)) {
+        LOG_PRINTLN("MQTT: no CA certificate stored for the broker");
+        return false;
+      }
+      tlsClient->setCACert(g_caCert);
+      break;
+    case mqtt_tls_verify::None:
+    case mqtt_tls_verify::Fingerprint:
+      // The fingerprint is checked after the handshake.
+      tlsClient->setInsecure();
+      break;
+    default:
+      LOG_PRINTLN("MQTT: invalid certificate verification mode");
+      return false;
+  }
+  if(!tlsClient->connect(settings.MQTT.hostname, settings.MQTT.port)) {
+    char msg[96];
+    tlsClient->lastError(msg, sizeof(msg));
+    LOG_PRINTF("MQTT: TLS connection to %s:%u failed: %s\n", settings.MQTT.hostname, settings.MQTT.port, msg);
+    return false;
+  }
+  if(settings.MQTT.tlsVerify == mqtt_tls_verify::Fingerprint && !tlsClient->verify(settings.MQTT.fingerprint, nullptr)) {
+    LOG_PRINTLN("MQTT: the broker certificate does not match the fingerprint");
+    tlsClient->stop();
+    return false;
+  }
+  mqttClient.setClient(*tlsClient);
+  return true;
+}
 bool MQTTClass::end() {
   this->suspended = true;
   this->disconnect();
@@ -32,7 +107,7 @@ bool MQTTClass::end() {
 }
 void MQTTClass::reset() {
   this->disconnect();
-  this->lastConnect = 0;
+  this->resetRetry();
   this->connect();
 }
 bool MQTTClass::loop() {
@@ -195,16 +270,22 @@ bool MQTTClass::connect() {
       return true;
   }
   if(settings.MQTT.enabled && !this->suspended) {
-    if(millis() - this->lastConnect < 10000) return false;    
+    if(millis() - this->lastConnect < this->retryDelay) return false;
     uint64_t mac = ESP.getEfuseMac();
     snprintf(this->clientId, sizeof(this->clientId), "client-%08x%08x", (uint32_t)((mac >> 32) & 0xFFFFFFFF), (uint32_t)(mac & 0xFFFFFFFF));
     if(strlen(settings.MQTT.protocol) > 0 && strlen(settings.MQTT.hostname) > 0) {
       mqttClient.setServer(settings.MQTT.hostname, settings.MQTT.port);
+      mqttClient.setSocketTimeout(4);
       char lwtTopic[128] = "status";
       if(strlen(settings.MQTT.rootTopic) > 0)
         snprintf(lwtTopic, sizeof(lwtTopic), "%s/status", settings.MQTT.rootTopic);
+      // Resolving the host, the TLS handshake and waiting for the broker are each limited by a
+      // timeout, but together they can exceed the task watchdog.
+      esp_task_wdt_delete(NULL);
+      bool ok = openTransport() && mqttClient.connect(this->clientId, settings.MQTT.username, settings.MQTT.password, lwtTopic, 0, true, "offline");
+      esp_task_wdt_add(NULL);
       esp_task_wdt_reset();
-      if(mqttClient.connect(this->clientId, settings.MQTT.username, settings.MQTT.password, lwtTopic, 0, true, "offline")) {
+      if(ok) {
         DEBUG_PRINT("Successfully connected MQTT client ");
         DEBUG_PRINTLN(this->clientId);
         this->publish("status", "online", true);
@@ -232,12 +313,15 @@ bool MQTTClass::connect() {
         DEBUG_PRINTLN("MQTT Startup Completed");
         esp_task_wdt_reset();
         this->lastConnect = millis();
+        this->retryDelay = MQTT_RETRY_MIN;
         return true;
       }
       else {
         LOG_PRINT("MQTT Connection failed for: ");
         LOG_PRINTLN(mqttClient.state());
         this->lastConnect = millis();
+        // Every attempt blocks the main loop for up to several seconds, so back off.
+        this->retryDelay = min((uint32_t)MQTT_RETRY_MAX, this->retryDelay * 2);
         return false;
       }
     }

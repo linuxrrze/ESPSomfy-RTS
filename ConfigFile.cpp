@@ -8,7 +8,7 @@
 
 extern Preferences pref;
 
-#define SHADE_HDR_VER 24
+#define SHADE_HDR_VER 25
 #define SHADE_HDR_SIZE 76
 #define SHADE_REC_SIZE 276
 #define GROUP_REC_SIZE 200
@@ -658,8 +658,10 @@ bool ShadeConfigFile::readNetRecord(restore_options_t &opts) {
     }
     // Now lets check to see if we are the same board.  If we are then we will restore
     // the ethernet phy settings.
+    bool ethRead = false;
     if(opts.network) {
       if(strncmp(settings.serverId, this->header.serverId, sizeof(settings.serverId)) == 0) {
+        ethRead = true;
         DEBUG_PRINTLN("Restoring Ethernet adapter settings");
         settings.Ethernet.boardType = this->readUInt8(1);
         settings.Ethernet.phyType = static_cast<eth_phy_type_t>(this->readUInt8(0));
@@ -669,6 +671,17 @@ bool ShadeConfigFile::readNetRecord(restore_options_t &opts) {
         settings.Ethernet.MDCPin = this->readInt8(16);
         settings.Ethernet.MDIOPin = this->readInt8(23);
       }
+    }
+    if(this->header.version >= 25) {
+      if(!ethRead) for(uint8_t i = 0; i < 7; i++) this->skipValue(6);
+      if(opts.mqtt) {
+        settings.MQTT.tlsVerify = static_cast<mqtt_tls_verify>(this->readUInt8(static_cast<uint8_t>(mqtt_tls_verify::PublicCA)));
+        this->readVarString(settings.MQTT.fingerprint, sizeof(settings.MQTT.fingerprint));
+      }
+    }
+    else if(opts.mqtt && settings.MQTT.useTLS() && settings.MQTT.port != 8883) {
+      // MQTTS connected without TLS before version 25.
+      strcpy(settings.MQTT.protocol, "MQTT");
     }
     if(this->file.position() != startPos + this->header.netRecordSize) {
       DEBUG_PRINTLN("Reading to end of network record");
@@ -1030,7 +1043,10 @@ bool ShadeConfigFile::writeNetRecord() {
   this->writeInt8(settings.Ethernet.phyAddress);
   this->writeInt8(settings.Ethernet.PWRPin);
   this->writeInt8(settings.Ethernet.MDCPin);
-  this->writeInt8(settings.Ethernet.MDIOPin, CFG_REC_END);
+  this->writeInt8(settings.Ethernet.MDIOPin);
+  // Added in version 25. Older firmware skips to the end of the record after the Ethernet settings.
+  this->writeUInt8(static_cast<uint8_t>(settings.MQTT.tlsVerify));
+  this->writeVarString(settings.MQTT.fingerprint, CFG_REC_END);
   return true;
 }
 bool ShadeConfigFile::writeTransRecord(transceiver_config_t &cfg) {

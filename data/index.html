@@ -396,14 +396,34 @@
                             </div>
                         </div>
                         <div class="field-group1" style="white-space:nowrap;">
-                            <select name="mqtt-protocol" data-bind="mqtt.protocol" style="width:54px;">
-                                <option>MQTT</option>
-                                <option>MQTTS</option>
+                            <select id="selMqttProtocol" name="mqtt-protocol" data-bind="mqtt.protocol" style="width:54px;" onchange="mqtt.onProtocolChanged();">
+                                <option value="MQTT">MQTT</option>
+                                <option value="MQTTS">MQTTS</option>
                             </select>
                             <span style="">://</span>
                             <input name="mqtt-host" type="text" length=64 placeholder="Host" data-bind="mqtt.hostname" style="width:calc(100% - 137px);">
                             <span>:</span>
-                            <input name="mqtt-port" type="text" length=5 placeholder="Port" data-bind="mqtt.port" data-datatype="int" style="width:50px;">
+                            <input id="fldMqttPort" name="mqtt-port" type="text" length=5 placeholder="Port" data-bind="mqtt.port" data-datatype="int" style="width:50px;">
+                        </div>
+                        <div id="divMqttTls" style="display:none;">
+                            <div class="field-group">
+                                <select id="selMqttTlsVerify" name="mqtt-tls-verify" data-bind="mqtt.tlsVerify" data-datatype="int" style="width:100%;" onchange="mqtt.showTlsOptions();">
+                                    <option value="1">Public certificate authority</option>
+                                    <option value="2">Own CA certificate</option>
+                                    <option value="3">Certificate fingerprint (SHA-256)</option>
+                                    <option value="0">Do not verify (insecure)</option>
+                                </select>
+                                <label for="selMqttTlsVerify">Verify Broker Certificate</label>
+                            </div>
+                            <div class="field-group" id="divMqttFingerprint" style="display:none;">
+                                <input id="fldMqttFingerprint" name="mqtt-fingerprint" type="text" length=95 data-bind="mqtt.fingerprint" placeholder="AB:CD:EF:...">
+                                <label for="fldMqttFingerprint">SHA-256 Fingerprint of the Broker Certificate</label>
+                            </div>
+                            <div class="field-group" id="divMqttCACert" style="display:none;">
+                                <textarea id="fldMqttCACert" name="mqtt-ca-cert" rows="6" spellcheck="false" placeholder="-----BEGIN CERTIFICATE-----" style="width:100%;box-sizing:border-box;font-family:monospace;font-size:10px;"></textarea>
+                                <label for="fldMqttCACert">CA Certificate (PEM)</label>
+                            </div>
+                            <div id="divMqttTlsHint" style="font-size:10pt;margin-bottom:10px;">The host name must match the name in the broker certificate unless the certificate is not verified.</div>
                         </div>
                         <div class="field-group">
                             <input id="fldMqttUsername" name="mqtt-username" type="text" data-bind="mqtt.username" length=32 placeholder="Username">

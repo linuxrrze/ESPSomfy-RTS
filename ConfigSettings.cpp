@@ -303,7 +303,9 @@ uint16_t ConfigSettings::calcNetRecSize() {
     + 5 // ETH.phyAddress
     + 5 // ETH.PWRPin
     + 5 // ETH.MDCPin
-    + 5; // ETH.MDIOPin
+    + 5 // ETH.MDIOPin
+    + 4 // MQTT.tlsVerify
+    + strlen(this->MQTT.fingerprint) + 3;
 }
 bool MQTTSettings::begin() {
   this->load();
@@ -319,6 +321,9 @@ void MQTTSettings::toJSON(JsonResponse &json) {
   json.addElem("password", this->password);
   json.addElem("rootTopic", this->rootTopic);
   json.addElem("discoTopic", this->discoTopic);
+  json.addElem("tlsVerify", static_cast<uint8_t>(this->tlsVerify));
+  json.addElem("fingerprint", this->fingerprint);
+  json.addElem("caCertLength", (uint32_t)this->caCertLength());
 }
 
 bool MQTTSettings::toJSON(JsonObject &obj) {
@@ -331,6 +336,8 @@ bool MQTTSettings::toJSON(JsonObject &obj) {
   obj["password"] = this->password;
   obj["rootTopic"] = this->rootTopic;
   obj["discoTopic"] = this->discoTopic;
+  obj["tlsVerify"] = static_cast<uint8_t>(this->tlsVerify);
+  obj["fingerprint"] = this->fingerprint;
   return true;
 }
 bool MQTTSettings::fromJSON(JsonObject &obj) {
@@ -343,6 +350,8 @@ bool MQTTSettings::fromJSON(JsonObject &obj) {
   this->parseValueString(obj, "rootTopic", this->rootTopic, sizeof(this->rootTopic));
   this->parseValueString(obj, "discoTopic", this->discoTopic, sizeof(this->discoTopic));
   if(obj.containsKey("port")) this->port = obj["port"];
+  if(obj.containsKey("tlsVerify")) this->tlsVerify = static_cast<mqtt_tls_verify>(obj["tlsVerify"].as<uint8_t>());
+  this->parseValueString(obj, "fingerprint", this->fingerprint, sizeof(this->fingerprint));
   return true;
 }
 bool MQTTSettings::save() {
@@ -357,6 +366,8 @@ bool MQTTSettings::save() {
   pref.putBool("enabled", this->enabled);
   pref.putBool("pubDisco", this->pubDisco);
   pref.putString("discoTopic", this->discoTopic);
+  pref.putUChar("tlsVerify", static_cast<uint8_t>(this->tlsVerify));
+  pref.putString("fingerprint", this->fingerprint);
   pref.end();
   return true;
 }
@@ -371,8 +382,41 @@ bool MQTTSettings::load() {
   this->enabled = pref.getBool("enabled", false);
   this->pubDisco = pref.getBool("pubDisco", false);
   pref.getString("discoTopic", this->discoTopic, sizeof(this->discoTopic));
+  if(pref.isKey("tlsVerify")) {
+    this->tlsVerify = static_cast<mqtt_tls_verify>(pref.getUChar("tlsVerify", static_cast<uint8_t>(mqtt_tls_verify::PublicCA)));
+    pref.getString("fingerprint", this->fingerprint, sizeof(this->fingerprint));
+  }
+  else if(this->useTLS() && this->port != 8883) {
+    // Settings saved before TLS was supported. MQTTS connected without TLS back then, so keep
+    // those connections working unless the TLS port was chosen.
+    strcpy(this->protocol, "MQTT");
+  }
   pref.end();
   return true;
+}
+bool MQTTSettings::useTLS() { return strcasecmp(this->protocol, "MQTTS") == 0; }
+// The CA certificate has its own namespace because save() clears the MQTT namespace.
+size_t MQTTSettings::caCertLength() {
+  pref.begin("MQTTCA", true);
+  size_t len = pref.isKey("pem") ? pref.getBytesLength("pem") : 0;
+  pref.end();
+  return len;
+}
+bool MQTTSettings::loadCACert(char *pem, size_t size) {
+  pref.begin("MQTTCA", true);
+  size_t len = pref.isKey("pem") ? pref.getBytesLength("pem") : 0;
+  bool ok = len > 0 && len < size && pref.getBytes("pem", pem, len) == len;
+  pref.end();
+  if(ok) pem[len] = '\0';
+  return ok;
+}
+bool MQTTSettings::saveCACert(const char *pem) {
+  size_t len = pem ? strlen(pem) : 0;
+  if(len > MQTT_MAX_CA_CERT) return false;
+  pref.begin("MQTTCA");
+  bool ok = len == 0 ? pref.clear() : pref.putBytes("pem", pem, len) == len;
+  pref.end();
+  return ok;
 }
 bool ConfigSettings::toJSON(DynamicJsonDocument &doc) {
   doc["fwVersion"] = this->fwVersion.name;

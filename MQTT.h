@@ -6,6 +6,7 @@
 class MQTTClass {
   public:
     uint32_t lastConnect = 0;
+    uint32_t retryDelay = 10000;
     bool suspended = false;
     char clientId[32] = {'\0'};
     bool begin();
@@ -15,6 +16,12 @@ class MQTTClass {
     bool disconnect();
     bool connected();
     void reset();
+    // Connect again on the next loop instead of waiting for the retry delay.
+    void resetRetry();
+    // Disconnects a TLS connection so another TLS session has enough heap. Returns true when
+    // it disconnected, in which case resume() has to be called afterwards.
+    bool pauseTLS();
+    void resume();
     bool unpublish(const char *topic);
     bool publish(const char *topic, const char *payload, bool retain = false);
     bool publish(const char *topic, uint8_t val, bool retain = false);

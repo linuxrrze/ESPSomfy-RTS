@@ -2647,6 +2647,7 @@ void Web::begin() {
         mqtt.disconnect();
         settings.MQTT.fromJSON(obj);
         settings.MQTT.save();
+        mqtt.resetRetry();
         JsonResponse resp;
         resp.beginResponse(&server, g_content, sizeof(g_content));
         resp.beginObject();
@@ -2666,6 +2667,46 @@ void Web::begin() {
       }
     }
     });
+  // CA certificate (PEM) for the MQTT broker. It is sent as the raw request body because it does
+  // not fit the JSON documents of the other MQTT settings.
+  server.on("/mqttcacert", []() {
+    webServer.sendCORSHeaders(server);
+    HTTPMethod method = server.method();
+    if(method == HTTP_GET) {
+      char *pem = (char *)malloc(MQTT_MAX_CA_CERT + 1);
+      if(!pem) {
+        server.send(500, _encoding_json, F("{\"status\":\"ERROR\",\"desc\":\"Out of memory\"}"));
+        return;
+      }
+      if(!settings.MQTT.loadCACert(pem, MQTT_MAX_CA_CERT + 1)) pem[0] = '\0';
+      server.send(200, _encoding_text, pem);
+      free(pem);
+      return;
+    }
+    if(method != HTTP_PUT && method != HTTP_POST && method != HTTP_DELETE) {
+      server.send(405, _encoding_json, F("{\"status\":\"ERROR\",\"desc\":\"Invalid HTTP Method\"}"));
+      return;
+    }
+    String pem = method == HTTP_DELETE ? String() : server.arg("plain");
+    pem.trim();
+    if(pem.length() > MQTT_MAX_CA_CERT) {
+      server.send(400, _encoding_json, F("{\"status\":\"ERROR\",\"desc\":\"The CA certificate is too long.\"}"));
+      return;
+    }
+    if(pem.length() > 0 && pem.indexOf("-----BEGIN CERTIFICATE-----") < 0) {
+      server.send(400, _encoding_json, F("{\"status\":\"ERROR\",\"desc\":\"The CA certificate must be in PEM format.\"}"));
+      return;
+    }
+    if(!settings.MQTT.saveCACert(pem.c_str())) {
+      server.send(500, _encoding_json, F("{\"status\":\"ERROR\",\"desc\":\"The CA certificate could not be saved.\"}"));
+      return;
+    }
+    // Reconnect with the new certificate.
+    mqtt.disconnect();
+    mqtt.resetRetry();
+    snprintf(g_content, sizeof(g_content), "{\"caCertLength\":%u}", pem.length());
+    server.send(200, _encoding_json, g_content);
+  });
   server.on("/mqttsettings", []() {
     webServer.sendCORSHeaders(server);
     JsonResponse resp;
