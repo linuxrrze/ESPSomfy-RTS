@@ -2,7 +2,7 @@
 #define MQTT_H
 #include <Arduino.h>
 #include <PubSubClient.h>
-#include <ArduinoJson.h>
+#include "ArduinoJsonConfig.h"
 class MQTTClass {
   public:
     uint64_t lastConnect = 0;

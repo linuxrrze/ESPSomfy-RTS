@@ -1,7 +1,7 @@
 #ifndef GITOTA_H
 #define GITOTA_H
 #include <Arduino.h>
-#include <ArduinoJson.h>
+#include "ArduinoJsonConfig.h"
 #include <time.h>
 #include "ConfigSettings.h"
 #include "WResp.h"

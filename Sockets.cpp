@@ -1,5 +1,5 @@
 #include <Arduino.h>
-#include <ArduinoJson.h>
+#include "ArduinoJsonConfig.h"
 #include <WebSocketsServer.h>
 #include <esp_task_wdt.h>
 #include "Sockets.h"

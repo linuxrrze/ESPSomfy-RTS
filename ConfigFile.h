@@ -1,4 +1,4 @@
-#include <ArduinoJson.h>
+#include "ArduinoJsonConfig.h"
 #include <LittleFS.h>
 #include "Somfy.h"
 #include "ConfigSettings.h"

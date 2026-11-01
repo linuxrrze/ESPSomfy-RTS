@@ -1,4 +1,4 @@
-#include <ArduinoJson.h>
+#include "ArduinoJsonConfig.h"
 #include <ETH.h>
 #ifndef configsettings_h
 #define configsettings_h

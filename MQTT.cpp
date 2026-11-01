@@ -1,6 +1,6 @@
 #include <WiFi.h>
 #include <PubSubClient.h>
-#include <ArduinoJson.h>
+#include "ArduinoJsonConfig.h"
 #include <esp_task_wdt.h>
 #include "ConfigSettings.h"
 #include "MQTT.h"
