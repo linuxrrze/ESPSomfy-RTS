@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate CABundle.h, the root CA bundle used to verify GitHub downloads.
+"""Generate CABundle.cpp, the root CA bundle used to verify TLS servers.
 
 The output uses the ESP-IDF certificate bundle format that
 WiFiClientSecure::setCACertBundle() expects. Each entry only holds the
@@ -12,7 +12,7 @@ core.
         u16 subject length, u16 public key length,
         subject (DER Name), public key (DER SubjectPublicKeyInfo)
 
-usage: tools/gen_ca_bundle.py tools/ca-roots.pem > CABundle.h
+usage: tools/gen_ca_bundle.py tools/ca-roots.pem > CABundle.cpp
 """
 import base64
 import re
@@ -70,14 +70,11 @@ def main():
     print('// Root CAs:')
     for _, _, name in certs:
         print(f'//   {name}')
-    print('#ifndef cabundle_h')
-    print('#define cabundle_h')
-    print('#include <Arduino.h>')
-    print(f'static const uint8_t ca_bundle[{len(bundle)}] = {{')
+    print('#include "CABundle.h"')
+    print(f'const uint8_t ca_bundle[{len(bundle)}] = {{')
     for i in range(0, len(bundle), 16):
         print('  ' + ', '.join(f'0x{b:02x}' for b in bundle[i:i + 16]) + ',')
     print('};')
-    print('#endif')
 
 
 if __name__ == '__main__':
