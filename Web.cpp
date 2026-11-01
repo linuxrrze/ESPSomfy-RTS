@@ -229,6 +229,7 @@ void Web::handleStreamFile(WebServer &server, const char *filename, const char *
     LOG_PRINT("Error opening");
     LOG_PRINTLN(filename);
     server.send(500, _encoding_text, "Error opening file");
+    return;
   }
   esp_task_wdt_delete(NULL);
   server.streamFile(file, encoding);
