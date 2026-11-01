@@ -8,14 +8,14 @@ env:
   ARDUINO_BOARD_MANAGER_ADDITIONAL_URLS: "https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json"
   ARDUINO_CLI_VERSION: "0.x"
   ARDUINO_ESP32_VERSION: "2.0.17"
-  ARDUINO_JSON_VERSION: "6.21.5"
+  ARDUINO_JSON_VERSION: "6.21.6"
   ESPTOOL_VERSION: "4.7"
   LITTLEFS_VERSION: "v2.5.1"
   MKLITTLEFS_VERSION: "3.1.0"
-  PUB_SUB_CLIENT_VERSION: "2.8.0"
+  PUB_SUB_CLIENT_VERSION: "3.3.2"
   PYTHON_VERSION: "3.10"
   SMARTRC_CC1101_VERSION: "2.5.7"
-  WEB_SOCKET_VERSION: "2.4.0"
+  WEB_SOCKET_VERSION: "2.7.2"
 
 jobs:
   littlefs:
@@ -157,7 +157,7 @@ jobs:
       - name: Configure Arduino Libraries
         run: |
           arduino-cli lib install ArduinoJson@${{ env.ARDUINO_JSON_VERSION }}
-          arduino-cli lib install PubSubClient@${{ env.PUB_SUB_CLIENT_VERSION }}
+          arduino-cli lib install PubSubClient3@${{ env.PUB_SUB_CLIENT_VERSION }}
           arduino-cli lib install SmartRC-CC1101-Driver-Lib@${{ env.SMARTRC_CC1101_VERSION }}
           arduino-cli lib install WebSockets@${{ env.WEB_SOCKET_VERSION }}
 
