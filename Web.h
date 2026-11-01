@@ -17,10 +17,6 @@ class Web {
     void handleGetRooms(WebServer &server);
     void handleGetShades(WebServer &server);
     void handleGetGroups(WebServer &server);
-    void handleShadeCommand(WebServer &server);
-    void handleRepeatCommand(WebServer &server);
-    void handleGroupCommand(WebServer &server);
-    void handleTiltCommand(WebServer &server);
     void handleDiscovery(WebServer &server);
     void handleNotFound(WebServer &server);
     void handleRoom(WebServer &server);

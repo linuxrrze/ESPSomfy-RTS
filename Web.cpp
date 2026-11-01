@@ -46,6 +46,41 @@ static void sendError(WebServer &srv, int code, const char *desc) {
   snprintf(g_content, sizeof(g_content), "{\"status\":\"ERROR\",\"desc\":\"%s\"}", desc);
   srv.send(code, _encoding_json, g_content);
 }
+// Writes the content of a JSON response for the item a route works on.
+typedef void (*json_writer_t)(JsonResponse &resp, void *item);
+// Sends a JSON object, or an array when array is true, with the content write adds. Sharing this
+// keeps the response setup out of every handler.
+static void __attribute__((noinline)) sendJson(WebServer &srv, json_writer_t write, void *item = nullptr, bool array = false) {
+  JsonResponse resp;
+  resp.beginResponse(&srv, g_content, sizeof(g_content));
+  if(array) resp.beginArray();
+  else resp.beginObject();
+  write(resp, item);
+  if(array) resp.endArray();
+  else resp.endObject();
+  resp.endResponse();
+}
+static void __attribute__((noinline)) sendShade(WebServer &srv, SomfyShade *shade) {
+  sendJson(srv, [](JsonResponse &resp, void *item) { static_cast<SomfyShade *>(item)->toJSON(resp); }, shade);
+}
+static void __attribute__((noinline)) sendShadeRef(WebServer &srv, SomfyShade *shade) {
+  sendJson(srv, [](JsonResponse &resp, void *item) { static_cast<SomfyShade *>(item)->toJSONRef(resp); }, shade);
+}
+static void __attribute__((noinline)) sendGroup(WebServer &srv, SomfyGroup *group) {
+  sendJson(srv, [](JsonResponse &resp, void *item) { static_cast<SomfyGroup *>(item)->toJSON(resp); }, group);
+}
+static void __attribute__((noinline)) sendGroupRef(WebServer &srv, SomfyGroup *group) {
+  sendJson(srv, [](JsonResponse &resp, void *item) { static_cast<SomfyGroup *>(item)->toJSONRef(resp); }, group);
+}
+static void __attribute__((noinline)) sendRoom(WebServer &srv, SomfyRoom *room) {
+  sendJson(srv, [](JsonResponse &resp, void *item) { static_cast<SomfyRoom *>(item)->toJSON(resp); }, room);
+}
+static void __attribute__((noinline)) sendTransceiver(WebServer &srv) {
+  sendJson(srv, [](JsonResponse &resp, void *) { somfy.transceiver.toJSON(resp); });
+}
+static void __attribute__((noinline)) sendRepeaters(WebServer &srv) {
+  sendJson(srv, [](JsonResponse &resp, void *) { somfy.toJSONRepeaters(resp); }, nullptr, true);
+}
 // Parses the request body into doc. Sends the error response and returns false when that fails.
 static bool __attribute__((noinline)) parseBody(WebServer &srv, JsonDocument &doc) {
   DeserializationError err = deserializeJson(doc, srv.arg("plain"));
@@ -414,348 +449,142 @@ void Web::handleController(WebServer &server) {
   HTTPMethod method = server.method();
   settings.printAvailHeap();
   if (method == HTTP_POST || method == HTTP_GET) {
-    JsonResponse resp;
-    resp.beginResponse(&server, g_content, sizeof(g_content));
-    resp.beginObject();
-    resp.addElem("maxRooms", (uint8_t)SOMFY_MAX_ROOMS);
-    resp.addElem("maxShades", (uint8_t)SOMFY_MAX_SHADES);
-    resp.addElem("maxGroups", (uint8_t)SOMFY_MAX_GROUPS);
-    resp.addElem("maxGroupedShades", (uint8_t)SOMFY_MAX_GROUPED_SHADES);
-    resp.addElem("maxLinkedRemotes", (uint8_t)SOMFY_MAX_LINKED_REMOTES);
-    resp.addElem("startingAddress", (uint32_t)somfy.startingAddress);
-    resp.beginObject("transceiver");
-    somfy.transceiver.toJSON(resp);
-    resp.endObject();
-    resp.beginObject("version");
-    git.toJSON(resp);
-    resp.endObject();
-    resp.beginArray("rooms");
-    somfy.toJSONRooms(resp);
-    resp.endArray();
-    resp.beginArray("shades");
-    somfy.toJSONShades(resp);
-    resp.endArray();
-    resp.beginArray("groups");
-    somfy.toJSONGroups(resp);
-    resp.endArray();
-    resp.beginArray("repeaters");
-    somfy.toJSONRepeaters(resp);
-    resp.endArray();
-    resp.endObject();
-    resp.endResponse();
+    sendJson(server, [](JsonResponse &resp, void *) {
+      resp.addElem("maxRooms", (uint8_t)SOMFY_MAX_ROOMS);
+      resp.addElem("maxShades", (uint8_t)SOMFY_MAX_SHADES);
+      resp.addElem("maxGroups", (uint8_t)SOMFY_MAX_GROUPS);
+      resp.addElem("maxGroupedShades", (uint8_t)SOMFY_MAX_GROUPED_SHADES);
+      resp.addElem("maxLinkedRemotes", (uint8_t)SOMFY_MAX_LINKED_REMOTES);
+      resp.addElem("startingAddress", (uint32_t)somfy.startingAddress);
+      resp.beginObject("transceiver");
+      somfy.transceiver.toJSON(resp);
+      resp.endObject();
+      resp.beginObject("version");
+      git.toJSON(resp);
+      resp.endObject();
+      resp.beginArray("rooms");
+      somfy.toJSONRooms(resp);
+      resp.endArray();
+      resp.beginArray("shades");
+      somfy.toJSONShades(resp);
+      resp.endArray();
+      resp.beginArray("groups");
+      somfy.toJSONGroups(resp);
+      resp.endArray();
+      resp.beginArray("repeaters");
+      somfy.toJSONRepeaters(resp);
+      resp.endArray();
+    });
   }
   else server.send(404, _encoding_text, _response_404);
 }
 void Web::handleLoginContext(WebServer &server) {
-    JsonResponse resp;
-    resp.beginResponse(&server, g_content, sizeof(g_content));
-    resp.beginObject();
-    resp.addElem("type", static_cast<uint8_t>(settings.Security.type));
-    resp.addElem("permissions", settings.Security.permissions);
-    resp.addElem("serverId", settings.serverId);
-    resp.addElem("version", settings.fwVersion.name);
-    resp.addElem("model", "ESPSomfyRTS");
-    resp.addElem("hostname", settings.hostname);
-    resp.endObject();
-    resp.endResponse();
+    sendJson(server, [](JsonResponse &resp, void *) {
+      resp.addElem("type", static_cast<uint8_t>(settings.Security.type));
+      resp.addElem("permissions", settings.Security.permissions);
+      resp.addElem("serverId", settings.serverId);
+      resp.addElem("version", settings.fwVersion.name);
+      resp.addElem("model", "ESPSomfyRTS");
+      resp.addElem("hostname", settings.hostname);
+    });
 }
 void Web::handleGetRepeaters(WebServer &server) {
     HTTPMethod method = server.method();
     if (method == HTTP_POST || method == HTTP_GET) {
-      JsonResponse resp;
-      resp.beginResponse(&server, g_content, sizeof(g_content));
-      resp.beginArray();
-      somfy.toJSONRepeaters(resp);
-      resp.endArray();
-      resp.endResponse();
+      sendRepeaters(server);
     }
     else server.send(404, _encoding_text, _response_404);
 }
 void Web::handleGetRooms(WebServer &server) {
     HTTPMethod method = server.method();
     if (method == HTTP_POST || method == HTTP_GET) {
-      JsonResponse resp;
-      resp.beginResponse(&server, g_content, sizeof(g_content));
-      resp.beginArray();
-      somfy.toJSONRooms(resp);
-      resp.endArray();
-      resp.endResponse();
+      sendJson(server, [](JsonResponse &resp, void *) { somfy.toJSONRooms(resp); }, nullptr, true);
     }
     else server.send(404, _encoding_text, _response_404);
 }
 void Web::handleGetShades(WebServer &server) {
     HTTPMethod method = server.method();
     if (method == HTTP_POST || method == HTTP_GET) {
-      JsonResponse resp;
-      resp.beginResponse(&server, g_content, sizeof(g_content));
-      resp.beginArray();
-      somfy.toJSONShades(resp);
-      resp.endArray();
-      resp.endResponse();
+      sendJson(server, [](JsonResponse &resp, void *) { somfy.toJSONShades(resp); }, nullptr, true);
     }
     else server.send(404, _encoding_text, _response_404);
 }
 void Web::handleGetGroups(WebServer &server) {
     HTTPMethod method = server.method();
     if (method == HTTP_POST || method == HTTP_GET) {
-      JsonResponse resp;
-      resp.beginResponse(&server, g_content, sizeof(g_content));
-      resp.beginArray();
-      somfy.toJSONGroups(resp);
-      resp.endArray();
-      resp.endResponse();
+      sendJson(server, [](JsonResponse &resp, void *) { somfy.toJSONGroups(resp); }, nullptr, true);
     }
     else server.send(404, _encoding_text, _response_404);
 }
-void Web::handleShadeCommand(WebServer& server) {
-  HTTPMethod method = server.method();
+// The command routes that share handleCommand.
+enum class cmd_routes : uint8_t { Shade, Group, Tilt, Repeat };
+// Handles /shadeCommand, /groupCommand, /tiltCommand and /repeatCommand. The parameters come as
+// query arguments when the shadeId or groupId is one, otherwise as a JSON body.
+static void handleCommand(WebServer &srv, cmd_routes route) {
+  HTTPMethod method = srv.method();
+  if(method != HTTP_GET && method != HTTP_PUT && method != HTTP_POST) {
+    sendError(srv, 500, "Invalid Http method");
+    return;
+  }
   uint8_t shadeId = 255;
+  uint8_t groupId = 255;
   uint8_t target = 255;
   uint8_t stepSize = 0;
   int8_t repeat = -1;
   somfy_commands command = somfy_commands::My;
-  if (method == HTTP_GET || method == HTTP_PUT || method == HTTP_POST) {
-    if (server.hasArg("shadeId")) {
-      shadeId = atoi(server.arg("shadeId").c_str());
-      if (server.hasArg("command")) command = translateSomfyCommand(server.arg("command"));
-      else if (server.hasArg("target")) target = atoi(server.arg("target").c_str());
-      if (server.hasArg("repeat")) repeat = atoi(server.arg("repeat").c_str());
-      if(server.hasArg("stepSize")) stepSize = atoi(server.arg("stepSize").c_str());
-    }
-    else if (server.hasArg("plain")) {
-      DEBUG_PRINTLN("Sending Shade Command");
-      DynamicJsonDocument doc(512);
-      if(!parseBody(server, doc)) {
-      return;
-    }
-      else {
-        JsonObject obj = doc.as<JsonObject>();
-        if (obj.containsKey("shadeId")) shadeId = obj["shadeId"];
-        else sendError(server, 500, "No shade id was supplied.");
-        if (obj.containsKey("command")) {
-            String scmd = obj["command"];
-            command = translateSomfyCommand(scmd);
-        }
-        else if (obj.containsKey("target")) {
-            target = obj["target"].as<uint8_t>();
-        }
-        if (obj.containsKey("repeat")) repeat = obj["repeat"].as<uint8_t>();
-        if(obj.containsKey("stepSize")) stepSize = obj["stepSize"].as<uint8_t>();
-      }
-    }
-    else sendError(server, 500, "No shade object supplied.");
-    SomfyShade* shade = somfy.getShadeById(shadeId);
-    if (shade) {
-      DEBUG_PRINT("Received:");
-      DEBUG_PRINTLN(server.arg("plain"));
-      // Send the command to the shade.
-      if (target <= 100)
-          shade->moveToTarget(shade->transformPosition(target));
-      else
-          shade->sendCommand(command, repeat > 0 ? repeat : shade->repeats, stepSize);
-      JsonResponse resp;
-      resp.beginResponse(&server, g_content, sizeof(g_content));
-      resp.beginObject();
-      shade->toJSONRef(resp);
-      resp.endObject();
-      resp.endResponse();
-    }
-    else {
-        sendError(server, 500, "Shade with the specified id not found.");
-    }
+  if(srv.hasArg("shadeId") || srv.hasArg("groupId")) {
+    if(srv.hasArg("shadeId")) shadeId = atoi(srv.arg("shadeId").c_str());
+    if(srv.hasArg("groupId")) groupId = atoi(srv.arg("groupId").c_str());
+    if(srv.hasArg("command")) command = translateSomfyCommand(srv.arg("command"));
+    else if(srv.hasArg("target")) target = atoi(srv.arg("target").c_str());
+    if(srv.hasArg("repeat")) repeat = atoi(srv.arg("repeat").c_str());
+    if(srv.hasArg("stepSize")) stepSize = atoi(srv.arg("stepSize").c_str());
   }
-  else
-    sendError(server, 500, "Invalid Http method");
-}
-void Web::handleRepeatCommand(WebServer& server) {
-  HTTPMethod method = server.method();
-  uint8_t shadeId = 255;
-  uint8_t groupId = 255;
-  uint8_t stepSize = 0;
-  int8_t repeat = -1;
-  somfy_commands command = somfy_commands::My;
-  if (method == HTTP_GET || method == HTTP_PUT || method == HTTP_POST) {
-    if(server.hasArg("shadeId")) shadeId = atoi(server.arg("shadeId").c_str());
-    else if(server.hasArg("groupId")) groupId = atoi(server.arg("groupId").c_str());
-    if(server.hasArg("command")) command = translateSomfyCommand(server.arg("command"));
-    if(server.hasArg("repeat")) repeat = atoi(server.arg("repeat").c_str());
-    if(server.hasArg("stepSize")) stepSize = atoi(server.arg("stepSize").c_str());
-    if(shadeId == 255 && groupId == 255 && server.hasArg("plain")) {
-      DynamicJsonDocument doc(512);
-      if(!parseBody(server, doc)) {
+  else if(srv.hasArg("plain")) {
+    DynamicJsonDocument doc(512);
+    if(!parseBody(srv, doc)) return;
+    JsonObject obj = doc.as<JsonObject>();
+    if(obj.containsKey("shadeId")) shadeId = obj["shadeId"];
+    if(obj.containsKey("groupId")) groupId = obj["groupId"];
+    if(obj.containsKey("command")) command = translateSomfyCommand(obj["command"].as<String>());
+    else if(obj.containsKey("target")) target = obj["target"].as<uint8_t>();
+    if(obj.containsKey("repeat")) repeat = obj["repeat"].as<uint8_t>();
+    if(obj.containsKey("stepSize")) stepSize = obj["stepSize"].as<uint8_t>();
+  }
+  // Unused shade and group slots have the id 255, so it must not be looked up.
+  if(route == cmd_routes::Group || (route == cmd_routes::Repeat && shadeId == 255)) {
+    SomfyGroup *group = groupId != 255 ? somfy.getGroupById(groupId) : nullptr;
+    if(!group) {
+      sendError(srv, 500, groupId == 255 ? "No group id was supplied." : "Group with the specified id not found.");
       return;
     }
-      else {
-        JsonObject obj = doc.as<JsonObject>();
-        if (obj.containsKey("shadeId")) shadeId = obj["shadeId"];
-        if(obj.containsKey("groupId")) groupId = obj["groupId"];
-        if(obj.containsKey("stepSize")) stepSize = obj["stepSize"];
-        if (obj.containsKey("command")) {
-            String scmd = obj["command"];
-            command = translateSomfyCommand(scmd);
-        }
-        if (obj.containsKey("repeat")) repeat = obj["repeat"].as<uint8_t>();
-      }
-    }
-    //DynamicJsonDocument sdoc(512);
-    //JsonObject sobj = sdoc.to<JsonObject>();
-    if(shadeId != 255) {
-      SomfyShade *shade = somfy.getShadeById(shadeId);
-      if(!shade) {
-        sendError(server, 500, "Shade reference could not be found.");
-        return;        
-      }
+    uint8_t repeats = repeat >= 0 ? repeat : group->repeats;
+    if(route == cmd_routes::Repeat && group->isLastCommand(command)) group->repeatFrame(repeats);
+    else group->sendCommand(command, repeats, stepSize);
+    sendGroupRef(srv, group);
+    return;
+  }
+  SomfyShade *shade = shadeId != 255 ? somfy.getShadeById(shadeId) : nullptr;
+  if(!shade) {
+    sendError(srv, 500, shadeId == 255 ? "No shade id was supplied." : "Shade with the specified id not found.");
+    return;
+  }
+  switch(route) {
+    case cmd_routes::Tilt:
+      if(target <= 100) shade->moveToTiltTarget(shade->transformPosition(target));
+      else shade->sendTiltCommand(command);
+      break;
+    case cmd_routes::Repeat:
       if(shade->shadeType == shade_types::garage1 && command == somfy_commands::Prog) command = somfy_commands::Toggle;
-      if(!shade->isLastCommand(command)) {
-        // We are going to send this as a new command.
-        shade->sendCommand(command, repeat >= 0 ? repeat : shade->repeats, stepSize);
-      }
-      else {
-        shade->repeatFrame(repeat >= 0 ? repeat : shade->repeats);
-      }
-      JsonResponse resp;
-      resp.beginResponse(&server, g_content, sizeof(g_content));
-      resp.beginArray();
-      shade->toJSONRef(resp);
-      resp.endArray();
-      resp.endResponse();
-    }
-    else if(groupId != 255) {
-      SomfyGroup * group = somfy.getGroupById(groupId);
-      if(!group) {
-        sendError(server, 500, "Group reference could not be found.");
-        return;        
-      }
-      if(!group->isLastCommand(command)) {
-        // We are going to send this as a new command.
-        group->sendCommand(command, repeat >= 0 ? repeat : group->repeats, stepSize);
-      }
-      else
-        group->repeatFrame(repeat >= 0 ? repeat : group->repeats);
-      JsonResponse resp;
-      resp.beginResponse(&server, g_content, sizeof(g_content));
-      resp.beginObject();
-      group->toJSONRef(resp);
-      resp.endObject();
-      resp.endResponse();
-        
-      //group->toJSON(sobj);
-      //serializeJson(sdoc, g_content);
-      //server.send(200, _encoding_json, g_content);
-    }
+      if(shade->isLastCommand(command)) shade->repeatFrame(repeat >= 0 ? repeat : shade->repeats);
+      else shade->sendCommand(command, repeat >= 0 ? repeat : shade->repeats, stepSize);
+      break;
+    default:
+      if(target <= 100) shade->moveToTarget(shade->transformPosition(target));
+      else shade->sendCommand(command, repeat > 0 ? repeat : shade->repeats, stepSize);
+      break;
   }
-  else {
-    sendError(server, 500, "Invalid Http method");
-  }
-}
-void Web::handleGroupCommand(WebServer &server) {
-  HTTPMethod method = server.method();
-  uint8_t groupId = 255;
-  uint8_t stepSize = 0;
-  int8_t repeat = -1;
-  somfy_commands command = somfy_commands::My;
-  if (method == HTTP_GET || method == HTTP_PUT || method == HTTP_POST) {
-    if (server.hasArg("groupId")) {
-      groupId = atoi(server.arg("groupId").c_str());
-      if (server.hasArg("command")) command = translateSomfyCommand(server.arg("command"));
-      if(server.hasArg("repeat")) repeat = atoi(server.arg("repeat").c_str());
-      if(server.hasArg("stepSize")) stepSize = atoi(server.arg("stepSize").c_str());
-    }
-    else if (server.hasArg("plain")) {
-      DEBUG_PRINTLN("Sending Group Command");
-      DynamicJsonDocument doc(256);
-      if(!parseBody(server, doc)) {
-      return;
-    }
-      else {
-        JsonObject obj = doc.as<JsonObject>();
-        if (obj.containsKey("groupId")) groupId = obj["groupId"];
-        else {
-          sendError(server, 500, "No group id was supplied.");
-          return;
-        }
-        if (obj.containsKey("command")) {
-          String scmd = obj["command"];
-          command = translateSomfyCommand(scmd);
-        }
-        if(obj.containsKey("repeat")) repeat = obj["repeat"].as<uint8_t>();
-        if(obj.containsKey("stepSize")) stepSize = obj["stepSize"].as<uint8_t>();
-      }
-    }
-    else sendError(server, 500, "No group object supplied.");
-    SomfyGroup * group = somfy.getGroupById(groupId);
-    if (group) {
-      DEBUG_PRINT("Received:");
-      DEBUG_PRINTLN(server.arg("plain"));
-      // Send the command to the group.
-      group->sendCommand(command, repeat >= 0 ? repeat : group->repeats, stepSize);
-      JsonResponse resp;
-      resp.beginResponse(&server, g_content, sizeof(g_content));
-      resp.beginObject();
-      group->toJSONRef(resp);
-      resp.endObject();
-      resp.endResponse();
-    }
-    else {
-      sendError(server, 500, "Group with the specified id not found.");
-    }
-  }
-  else
-    sendError(server, 500, "Invalid Http method");
-}
-void Web::handleTiltCommand(WebServer &server) {
-  HTTPMethod method = server.method();
-  uint8_t shadeId = 255;
-  uint8_t target = 255;
-  somfy_commands command = somfy_commands::My;
-  if (method == HTTP_GET || method == HTTP_PUT || method == HTTP_POST) {
-    if (server.hasArg("shadeId")) {
-      shadeId = atoi(server.arg("shadeId").c_str());
-      if (server.hasArg("command")) command = translateSomfyCommand(server.arg("command"));
-      else if(server.hasArg("target")) target = atoi(server.arg("target").c_str());
-    }
-    else if (server.hasArg("plain")) {
-      DEBUG_PRINTLN("Sending Shade Tilt Command");
-      DynamicJsonDocument doc(256);
-      if(!parseBody(server, doc)) {
-      return;
-    }
-      else {
-        JsonObject obj = doc.as<JsonObject>();
-        if (obj.containsKey("shadeId")) shadeId = obj["shadeId"];
-        else sendError(server, 500, "No shade id was supplied.");
-        if (obj.containsKey("command")) {
-          String scmd = obj["command"];
-          command = translateSomfyCommand(scmd);
-        }
-        else if(obj.containsKey("target")) {
-          target = obj["target"].as<uint8_t>();
-        }
-      }
-    }
-    else sendError(server, 500, "No shade object supplied.");
-    SomfyShade* shade = somfy.getShadeById(shadeId);
-    if (shade) {
-      DEBUG_PRINT("Received:");
-      DEBUG_PRINTLN(server.arg("plain"));
-      // Send the command to the shade.
-      if(target <= 100)
-        shade->moveToTiltTarget(shade->transformPosition(target));
-      else
-        shade->sendTiltCommand(command);
-      JsonResponse resp;
-      resp.beginResponse(&server, g_content, sizeof(g_content));
-      resp.beginObject();
-      shade->toJSONRef(resp);
-      resp.endObject();
-      resp.endResponse();
-    }
-    else {
-      sendError(server, 500, "Shade with the specified id not found.");
-    }  
-  }
-  else
-    sendError(server, 500, "Invalid Http method");
+  sendShadeRef(srv, shade);
 }
 void Web::handleRoom(WebServer &server) {
   HTTPMethod method = server.method();
@@ -764,12 +593,7 @@ void Web::handleRoom(WebServer &server) {
       int roomId = atoi(server.arg("roomId").c_str());
       SomfyRoom* room = somfy.getRoomById(roomId);
       if (room) {
-        JsonResponse resp;
-        resp.beginResponse(&server, g_content, sizeof(g_content));
-        resp.beginObject();
-        room->toJSON(resp);
-        resp.endObject();
-        resp.endResponse();
+        sendRoom(server, room);
       }
       else sendError(server, 500, "Room Id not found.");
     }
@@ -793,12 +617,7 @@ void Web::handleRoom(WebServer &server) {
             uint8_t err = room->fromJSON(obj);
             if(err == 0) {
               room->save();
-              JsonResponse resp;
-              resp.beginResponse(&server, g_content, sizeof(g_content));
-              resp.beginObject();
-              room->toJSON(resp);
-              resp.endObject();
-              resp.endResponse();
+              sendRoom(server, room);
             }
             else {
               snprintf(g_content, sizeof(g_content), "{\"status\":\"DATA\",\"desc\":\"Data Error.\", \"code\":%d}", err);
@@ -822,12 +641,7 @@ void Web::handleShade(WebServer &server) {
       int shadeId = atoi(server.arg("shadeId").c_str());
       SomfyShade* shade = somfy.getShadeById(shadeId);
       if (shade) {
-        JsonResponse resp;
-        resp.beginResponse(&server, g_content, sizeof(g_content));
-        resp.beginObject();
-        shade->toJSON(resp);
-        resp.endObject();
-        resp.endResponse();
+        sendShade(server, shade);
       }
       else sendError(server, 500, "Shade Id not found.");
     }
@@ -851,12 +665,7 @@ void Web::handleShade(WebServer &server) {
             uint8_t err = shade->fromJSON(obj);
             if(err == 0) {
               shade->save();
-              JsonResponse resp;
-              resp.beginResponse(&server, g_content, sizeof(g_content));
-              resp.beginObject();
-              shade->toJSON(resp);
-              resp.endObject();
-              resp.endResponse();
+              sendShade(server, shade);
             }
             else {
               snprintf(g_content, sizeof(g_content), "{\"status\":\"DATA\",\"desc\":\"Data Error.\", \"code\":%d}", err);
@@ -880,12 +689,7 @@ void Web::handleGroup(WebServer &server) {
       int groupId = atoi(server.arg("groupId").c_str());
       SomfyGroup* group = somfy.getGroupById(groupId);
       if (group) {
-        JsonResponse resp;
-        resp.beginResponse(&server, g_content, sizeof(g_content));
-        resp.beginObject();
-        group->toJSON(resp);
-        resp.endObject();
-        resp.endResponse();
+        sendGroup(server, group);
       }
       else sendError(server, 500, "Group Id not found.");
     }
@@ -908,12 +712,7 @@ void Web::handleGroup(WebServer &server) {
           if (group) {
             group->fromJSON(obj);
             group->save();
-            JsonResponse resp;
-            resp.beginResponse(&server, g_content, sizeof(g_content));
-            resp.beginObject();
-            group->toJSON(resp);
-            resp.endObject();
-            resp.endResponse();
+            sendGroup(server, group);
           }
           else sendError(server, 500, "Group Id not found.");
         }
@@ -933,36 +732,34 @@ void Web::handleDiscovery(WebServer &server) {
     if(net.connType == conn_types_t::ethernet) strcpy(connType, "Ethernet");
     else if(net.connType == conn_types_t::wifi) strcpy(connType, "Wifi");
 
-    JsonResponse resp;
-    resp.beginResponse(&server, g_content, sizeof(g_content));
-    resp.beginObject();
-    resp.addElem("serverId", settings.serverId);
-    resp.addElem("version", settings.fwVersion.name);
-    resp.addElem("latest", git.latest.name);
-    resp.addElem("model", "ESPSomfyRTS");
-    resp.addElem("hostname", settings.hostname);
-    resp.addElem("authType", static_cast<uint8_t>(settings.Security.type));
-    resp.addElem("permissions", settings.Security.permissions);
-    resp.addElem("chipModel", settings.chipModel);
-    resp.addElem("connType", connType);
-    resp.addElem("checkForUpdate", settings.checkForUpdate);
-    resp.beginObject("memory");
-    resp.addElem("max", ESP.getMaxAllocHeap());
-    resp.addElem("free", ESP.getFreeHeap());
-    resp.addElem("min", ESP.getMinFreeHeap());
-    resp.addElem("total", ESP.getHeapSize());
-    resp.endObject();
-    resp.beginArray("rooms");
-    somfy.toJSONRooms(resp);
-    resp.endArray();
-    resp.beginArray("shades");
-    somfy.toJSONShades(resp);
-    resp.endArray();
-    resp.beginArray("groups");
-    somfy.toJSONGroups(resp);
-    resp.endArray();
-    resp.endObject();
-    resp.endResponse();
+    sendJson(server, [](JsonResponse &resp, void *item) {
+      const char *connType = static_cast<const char *>(item);
+      resp.addElem("serverId", settings.serverId);
+      resp.addElem("version", settings.fwVersion.name);
+      resp.addElem("latest", git.latest.name);
+      resp.addElem("model", "ESPSomfyRTS");
+      resp.addElem("hostname", settings.hostname);
+      resp.addElem("authType", static_cast<uint8_t>(settings.Security.type));
+      resp.addElem("permissions", settings.Security.permissions);
+      resp.addElem("chipModel", settings.chipModel);
+      resp.addElem("connType", connType);
+      resp.addElem("checkForUpdate", settings.checkForUpdate);
+      resp.beginObject("memory");
+      resp.addElem("max", ESP.getMaxAllocHeap());
+      resp.addElem("free", ESP.getFreeHeap());
+      resp.addElem("min", ESP.getMinFreeHeap());
+      resp.addElem("total", ESP.getHeapSize());
+      resp.endObject();
+      resp.beginArray("rooms");
+      somfy.toJSONRooms(resp);
+      resp.endArray();
+      resp.beginArray("shades");
+      somfy.toJSONShades(resp);
+      resp.endArray();
+      resp.beginArray("groups");
+      somfy.toJSONGroups(resp);
+      resp.endArray();
+    }, connType);
     net.needsBroadcast = true;
   }
   else
@@ -995,8 +792,8 @@ void Web::handleBackup(WebServer &server, bool attach) {
   somfy.writeBackup();
   File file = LittleFS.open("/controller.backup", "r");
   if (!file) {
-    LOG_PRINTLN("Error opening shades.cfg");
-    server.send(500, _encoding_text, "shades.cfg");
+    LOG_PRINTLN("Error opening controller.backup");
+    server.send(500, _encoding_text, "Error opening controller.backup");
     return;
   }
   server.streamFile(file, _encoding_text);
@@ -1024,12 +821,7 @@ void Web::handleSetPositions(WebServer &server) {
       if(pos >= 0) shade->target = shade->currentPos = pos;
       if(tiltPos >= 0 && shade->tiltType != tilt_types::none) shade->tiltTarget = shade->currentTiltPos = tiltPos;
       shade->emitState();
-      JsonResponse resp;
-      resp.beginResponse(&server, g_content, sizeof(g_content));
-      resp.beginObject();
-      shade->toJSON(resp);
-      resp.endObject();
-      resp.endResponse();
+      sendShade(server, shade);
     }
     else
       sendError(server, 500, "An invalid shadeId was provided");
@@ -1073,12 +865,7 @@ void Web::handleSetSensor(WebServer &server) {
     if(shade) {
       shade->sendSensorCommand(windy, sunny, repeat >= 0 ? (uint8_t)repeat : shade->repeats);
       shade->emitState();
-      JsonResponse resp;
-      resp.beginResponse(&server, g_content, sizeof(g_content));
-      resp.beginObject();
-      shade->toJSON(resp);
-      resp.endObject();
-      resp.endResponse();
+      sendShade(server, shade);
     }
     else
       sendError(server, 500, "An invalid shadeId was provided");
@@ -1089,12 +876,7 @@ void Web::handleSetSensor(WebServer &server) {
     if(group) {
       group->sendSensorCommand(windy, sunny, repeat >= 0 ? (uint8_t)repeat : group->repeats);
       group->emitState();
-      JsonResponse resp;
-      resp.beginResponse(&server, g_content, sizeof(g_content));
-      resp.beginObject();
-      group->toJSON(resp);
-      resp.endObject();
-      resp.endResponse();
+      sendGroup(server, group);
     }
     else
       sendError(server, 500, "An invalid groupId was provided");
@@ -1125,12 +907,7 @@ void Web::handleDownloadFirmware(WebServer &server) {
         }
       }
       if(rel) {
-        JsonResponse resp;
-        resp.beginResponse(&server, g_content, sizeof(g_content));
-        resp.beginObject();
-        rel->toJSON(resp);
-        resp.endObject();
-        resp.endResponse();
+        sendJson(server, [](JsonResponse &resp, void *item) { static_cast<GitRelease *>(item)->toJSON(resp); }, rel);
         strcpy(git.targetRelease, rel->name);
         git.insecure = insecure;
         git.status = GIT_AWAITING_UPDATE;
@@ -1210,10 +987,10 @@ void Web::begin() {
   onRoute(apiServer, "/login", []() { webServer.handleLogin(apiServer); });
   apiServer.onNotFound([]() { webServer.handleNotFound(apiServer); });
   onRoute(apiServer, "/controller", []() { webServer.handleController(apiServer); });
-  onRoute(apiServer, "/shadeCommand", []() { webServer.handleShadeCommand(apiServer); });
-  onRoute(apiServer, "/groupCommand", []() { webServer.handleGroupCommand(apiServer); });
-  onRoute(apiServer, "/tiltCommand", []() { webServer.handleTiltCommand(apiServer); });
-  onRoute(apiServer, "/repeatCommand", []() { webServer.handleRepeatCommand(apiServer); });
+  onRoute(apiServer, "/shadeCommand", []() { handleCommand(apiServer, cmd_routes::Shade); });
+  onRoute(apiServer, "/groupCommand", []() { handleCommand(apiServer, cmd_routes::Group); });
+  onRoute(apiServer, "/tiltCommand", []() { handleCommand(apiServer, cmd_routes::Tilt); });
+  onRoute(apiServer, "/repeatCommand", []() { handleCommand(apiServer, cmd_routes::Repeat); });
   onRoute(apiServer, "/room", HTTP_GET, [] () { webServer.handleRoom(apiServer); });
   onRoute(apiServer, "/shade", HTTP_GET, [] () { webServer.handleShade(apiServer); });
   onRoute(apiServer, "/group", HTTP_GET, [] () { webServer.handleGroup(apiServer); });
@@ -1224,10 +1001,10 @@ void Web::begin() {
   onRoute(apiServer, "/reboot", []() { webServer.handleReboot(apiServer); });
   
   // Web Interface
-  onRoute(server, "/tiltCommand", []() { webServer.handleTiltCommand(server); });
-  onRoute(server, "/repeatCommand", []() { webServer.handleRepeatCommand(server); });
-  onRoute(server, "/shadeCommand", []() { webServer.handleShadeCommand(server); });
-  onRoute(server, "/groupCommand", []() { webServer.handleGroupCommand(server); });
+  onRoute(server, "/tiltCommand", []() { handleCommand(server, cmd_routes::Tilt); });
+  onRoute(server, "/repeatCommand", []() { handleCommand(server, cmd_routes::Repeat); });
+  onRoute(server, "/shadeCommand", []() { handleCommand(server, cmd_routes::Shade); });
+  onRoute(server, "/groupCommand", []() { handleCommand(server, cmd_routes::Group); });
   onRoute(server, "/setPositions", []() { webServer.handleSetPositions(server); });
   onRoute(server, "/setSensor", []() { webServer.handleSetSensor(server); });
   onRoute(server, "/upnp.xml", []() { SSDP.schema(server.client()); });
@@ -1241,24 +1018,14 @@ void Web::begin() {
       return;
     }
     git.setCurrentRelease(repo);
-    JsonResponse resp;
-    resp.beginResponse(&server, g_content, sizeof(g_content));
-    resp.beginObject();
-    repo.toJSON(resp);
-    resp.endObject();
-    resp.endResponse();
+    sendJson(server, [](JsonResponse &resp, void *item) { static_cast<GitRepo *>(item)->toJSON(resp); }, &repo);
   });
   onRoute(server, "/downloadFirmware", []() { webServer.handleDownloadFirmware(server); });
   onRoute(server, "/cancelFirmware", []() {
     // If we are currently downloading the filesystem we cannot cancel.
     if(!git.lockFS) {
       git.status = GIT_UPDATE_CANCELLING;
-      JsonResponse resp;
-      resp.beginResponse(&server, g_content, sizeof(g_content));
-      resp.beginObject();
-      git.toJSON(resp);
-      resp.endObject();
-      resp.endResponse();
+      sendJson(server, [](JsonResponse &resp, void *) { git.toJSON(resp); });
       git.cancelled = true;
     }
     else {
@@ -1332,37 +1099,30 @@ void Web::begin() {
   onRoute(server, "/shade", []() { webServer.handleShade(server); });
   onRoute(server, "/group", []() { webServer.handleGroup(server); });
   onRoute(server, "/getNextRoom", []() {
-    JsonResponse resp;
-    resp.beginResponse(&server, g_content, sizeof(g_content));
-    resp.beginObject();
-    resp.addElem("roomId", somfy.getNextRoomId());
-    resp.endObject();
-    resp.endResponse();
+    sendJson(server, [](JsonResponse &resp, void *) {
+      resp.addElem("roomId", somfy.getNextRoomId());
+    });
   });
   onRoute(server, "/getNextShade", []() {
     uint8_t shadeId = somfy.getNextShadeId();
-    JsonResponse resp;
-    resp.beginResponse(&server, g_content, sizeof(g_content));
-    resp.beginObject();
-    resp.addElem("shadeId", shadeId);
-    resp.addElem("remoteAddress", (uint32_t)somfy.getNextRemoteAddress(shadeId));
-    resp.addElem("bitLength", somfy.transceiver.config.type);
-    resp.addElem("stepSize", (uint8_t)100);
-    resp.addElem("proto", static_cast<uint8_t>(somfy.transceiver.config.proto));
-    resp.endObject();
-    resp.endResponse();
+    sendJson(server, [](JsonResponse &resp, void *item) {
+      uint8_t shadeId = *static_cast<uint8_t *>(item);
+      resp.addElem("shadeId", shadeId);
+      resp.addElem("remoteAddress", (uint32_t)somfy.getNextRemoteAddress(shadeId));
+      resp.addElem("bitLength", somfy.transceiver.config.type);
+      resp.addElem("stepSize", (uint8_t)100);
+      resp.addElem("proto", static_cast<uint8_t>(somfy.transceiver.config.proto));
+    }, &shadeId);
     });
   onRoute(server, "/getNextGroup", []() {
     uint8_t groupId = somfy.getNextGroupId();
-    JsonResponse resp;
-    resp.beginResponse(&server, g_content, sizeof(g_content));
-    resp.beginObject();
-    resp.addElem("groupId", groupId);
-    resp.addElem("remoteAddress", (uint32_t)somfy.getNextRemoteAddress(groupId));
-    resp.addElem("bitLength", somfy.transceiver.config.type);
-    resp.addElem("proto", static_cast<uint8_t>(somfy.transceiver.config.proto));
-    resp.endObject();
-    resp.endResponse();
+    sendJson(server, [](JsonResponse &resp, void *item) {
+      uint8_t groupId = *static_cast<uint8_t *>(item);
+      resp.addElem("groupId", groupId);
+      resp.addElem("remoteAddress", (uint32_t)somfy.getNextRemoteAddress(groupId));
+      resp.addElem("bitLength", somfy.transceiver.config.type);
+      resp.addElem("proto", static_cast<uint8_t>(somfy.transceiver.config.proto));
+    }, &groupId);
     });
   onRoute(server, "/addRoom", []() {
     HTTPMethod method = server.method();
@@ -1391,12 +1151,7 @@ void Web::begin() {
       }
     }
     if (room) {
-      JsonResponse resp;
-      resp.beginResponse(&server, g_content, sizeof(g_content));
-      resp.beginObject();
-      room->toJSON(resp);
-      resp.endObject();
-      resp.endResponse();
+      sendRoom(server, room);
     }
     else {
       sendError(server, 500, "Error saving Somfy Room.");
@@ -1430,12 +1185,7 @@ void Web::begin() {
     }
     if (shade) {
       //DEBUG_PRINTLN("Serializing shade");
-      JsonResponse resp;
-      resp.beginResponse(&server, g_content, sizeof(g_content));
-      resp.beginObject();
-      shade->toJSON(resp);
-      resp.endObject();
-      resp.endResponse();
+      sendShade(server, shade);
     }
     else {
       sendError(server, 500, "Error saving Somfy Shade.");
@@ -1468,12 +1218,7 @@ void Web::begin() {
       }
     }
     if (group) {
-      JsonResponse resp;
-      resp.beginResponse(&server, g_content, sizeof(g_content));
-      resp.beginObject();
-      group->toJSON(resp);
-      resp.endObject();
-      resp.endResponse();
+      sendGroup(server, group);
     }
     else {
       sendError(server, 500, "Error saving Somfy Group.");
@@ -1486,31 +1231,29 @@ void Web::begin() {
         int groupId = atoi(server.arg("groupId").c_str());
         SomfyGroup* group = somfy.getGroupById(groupId);
         if (group) {
-          JsonResponse resp;
-          resp.beginResponse(&server, g_content, sizeof(g_content));
-          resp.beginObject();
-          group->toJSON(resp);
-          resp.beginArray("availShades");
-          for(uint8_t i = 0; i < SOMFY_MAX_SHADES; i++) {
-            SomfyShade *shade = &somfy.shades[i];
-            if(shade->getShadeId() != 255) {
-              bool isLinked = false;
-              for(uint8_t j = 0; j < SOMFY_MAX_GROUPED_SHADES; j++) {
-                if(group->linkedShades[j] == shade->getShadeId()) {
-                  isLinked = true;
-                  break;
+          sendJson(server, [](JsonResponse &resp, void *item) {
+            SomfyGroup *group = static_cast<SomfyGroup *>(item);
+            group->toJSON(resp);
+            resp.beginArray("availShades");
+            for(uint8_t i = 0; i < SOMFY_MAX_SHADES; i++) {
+              SomfyShade *shade = &somfy.shades[i];
+              if(shade->getShadeId() != 255) {
+                bool isLinked = false;
+                for(uint8_t j = 0; j < SOMFY_MAX_GROUPED_SHADES; j++) {
+                  if(group->linkedShades[j] == shade->getShadeId()) {
+                    isLinked = true;
+                    break;
+                  }
+                }
+                if(!isLinked) {
+                  resp.beginObject();
+                  shade->toJSONRef(resp);
+                  resp.endObject();
                 }
               }
-              if(!isLinked) {
-                resp.beginObject();
-                shade->toJSONRef(resp);
-                resp.endObject();
-              }
             }
-          }
-          resp.endArray();
-          resp.endObject();
-          resp.endResponse();
+            resp.endArray();
+          }, group);
         }
         else sendError(server, 500, "Group Id not found.");
       }
@@ -1537,12 +1280,7 @@ void Web::begin() {
             if (room) {
               room->fromJSON(obj);
               room->save();
-              JsonResponse resp;
-              resp.beginResponse(&server, g_content, sizeof(g_content));
-              resp.beginObject();
-              room->toJSON(resp);
-              resp.endObject();
-              resp.endResponse();
+              sendRoom(server, room);
             }
             else sendError(server, 500, "Room Id not found.");
           }
@@ -1571,12 +1309,7 @@ void Web::begin() {
               int8_t err = shade->fromJSON(obj);
               if(err == 0) {
                 shade->save();
-                JsonResponse resp;
-                resp.beginResponse(&server, g_content, sizeof(g_content));
-                resp.beginObject();
-                shade->toJSON(resp);
-                resp.endObject();
-                resp.endResponse();
+                sendShade(server, shade);
               }
               else {
                 snprintf(g_content, sizeof(g_content), "{\"status\":\"DATA\",\"desc\":\"Data Error.\", \"code\":%d}", err);
@@ -1608,12 +1341,7 @@ void Web::begin() {
             if (group) {
               group->fromJSON(obj);
               group->save();
-              JsonResponse resp;
-              resp.beginResponse(&server, g_content, sizeof(g_content));
-              resp.beginObject();
-              group->toJSON(resp);
-              resp.endObject();
-              resp.endResponse();
+              sendGroup(server, group);
             }
             else sendError(server, 500, "Group Id not found.");
           }
@@ -1655,12 +1383,7 @@ void Web::begin() {
         if(shade->tiltType == tilt_types::none) tilt = -1;
         if(pos >= 0 && pos <= 100)
           shade->setMyPosition(shade->transformPosition(pos), shade->transformPosition(tilt));
-          JsonResponse resp;
-          resp.beginResponse(&server, g_content, sizeof(g_content));
-          resp.beginObject();
-          shade->toJSONRef(resp);
-          resp.endObject();
-          resp.endResponse();
+          sendShadeRef(server, shade);
       }
       else {
         sendError(server, 500, "Shade with the specified id not found.");
@@ -1697,12 +1420,7 @@ void Web::begin() {
       }
       else {
         shade->setRollingCode(rollingCode);
-        JsonResponse resp;
-        resp.beginResponse(&server, g_content, sizeof(g_content));
-        resp.beginObject();
-        shade->toJSON(resp);
-        resp.endObject();
-        resp.endResponse();
+        sendShade(server, shade);
       }
     }
   });
@@ -1734,12 +1452,7 @@ void Web::begin() {
     else {
       shade->paired = paired;
       shade->save();
-      JsonResponse resp;
-      resp.beginResponse(&server, g_content, sizeof(g_content));
-      resp.beginObject();
-      shade->toJSON(resp);
-      resp.endObject();
-      resp.endResponse();
+      sendShade(server, shade);
     }
   });
   onRoute(server, "/unpairShade", []() {
@@ -1771,12 +1484,7 @@ void Web::begin() {
           shade->sendCommand(somfy_commands::Prog, 1);
         shade->paired = false;
         shade->save();
-        JsonResponse resp;
-        resp.beginResponse(&server, g_content, sizeof(g_content));
-        resp.beginObject();
-        shade->toJSON(resp);
-        resp.endObject();
-        resp.endResponse();
+        sendShade(server, shade);
       }
     }
     });
@@ -1803,12 +1511,7 @@ void Web::begin() {
           sendError(server, 500, "No repeater address was supplied.");
       else {
         somfy.linkRepeater(address);
-        JsonResponse resp;
-        resp.beginResponse(&server, g_content, sizeof(g_content));
-        resp.beginArray();
-        somfy.toJSONRepeaters(resp);
-        resp.endArray();
-        resp.endResponse();
+        sendRepeaters(server);
       }
     }
   });
@@ -1835,12 +1538,7 @@ void Web::begin() {
           sendError(server, 500, "No repeater address was supplied.");
       else {
         somfy.unlinkRepeater(address);
-        JsonResponse resp;
-        resp.beginResponse(&server, g_content, sizeof(g_content));
-        resp.beginArray();
-        somfy.toJSONRepeaters(resp);
-        resp.endArray();
-        resp.endResponse();
+        sendRepeaters(server);
       }
     }
   });
@@ -1865,12 +1563,7 @@ void Web::begin() {
               else {
                 sendError(server, 500, "Remote address not provided.");
               }
-              JsonResponse resp;
-              resp.beginResponse(&server, g_content, sizeof(g_content));
-              resp.beginObject();
-              shade->toJSON(resp);
-              resp.endObject();
-              resp.endResponse();
+              sendShade(server, shade);
             }
             else sendError(server, 500, "Shade Id not found.");
           }
@@ -1902,12 +1595,7 @@ void Web::begin() {
               else {
                 sendError(server, 500, "Remote address not provided.");
               }
-              JsonResponse resp;
-              resp.beginResponse(&server, g_content, sizeof(g_content));
-              resp.beginObject();
-              shade->toJSON(resp);
-              resp.endObject();
-              resp.endResponse();
+              sendShade(server, shade);
             }
             else sendError(server, 500, "Shade Id not found.");
           }
@@ -1949,12 +1637,7 @@ void Web::begin() {
             return;
           }
           group->linkShade(shadeId);
-          JsonResponse resp;
-          resp.beginResponse(&server, g_content, sizeof(g_content));
-          resp.beginObject();
-          group->toJSON(resp);
-          resp.endObject();
-          resp.endResponse();
+          sendGroup(server, group);
         }
       }
       else sendError(server, 500, "No linking object supplied.");
@@ -2003,12 +1686,7 @@ void Web::begin() {
             return;
           }
           group->unlinkShade(shadeId);
-          JsonResponse resp;
-          resp.beginResponse(&server, g_content, sizeof(g_content));
-          resp.beginObject();
-          group->toJSON(resp);
-          resp.endObject();
-          resp.endResponse();
+          sendGroup(server, group);
         }
       }
       else sendError(server, 500, "No unlinking object supplied.");
@@ -2205,28 +1883,26 @@ void Web::begin() {
     DEBUG_PRINT(n);
     DEBUG_PRINTLN(" networks");
     // Ok we need to chunk this response as well.
-    JsonResponse resp;
-    resp.beginResponse(&server, g_content, sizeof(g_content));
-    resp.beginObject();
-    resp.beginObject("connected");
-    resp.addElem("name", settings.WIFI.ssid);
-    resp.addElem("passphrase", settings.WIFI.passphrase);
-    resp.addElem("strength", (int32_t)WiFi.RSSI());
-    resp.addElem("channel", (int32_t)WiFi.channel());
-    resp.endObject();
-    resp.beginArray("accessPoints");
-    for(int i = 0; i < n; ++i) {
-      if(WiFi.SSID(i).length() == 0 || WiFi.RSSI(i) < -95) continue; // Ignore hidden and weak networks that we cannot connect to anyway.
-      resp.beginObject();
-      resp.addElem("name", WiFi.SSID(i).c_str());
-      resp.addElem("channel", (int32_t)WiFi.channel(i));
-      resp.addElem("strength", (int32_t)WiFi.RSSI(i));
-      resp.addElem("macAddress", WiFi.BSSIDstr(i).c_str());
+    sendJson(server, [](JsonResponse &resp, void *item) {
+      int n = *static_cast<int *>(item);
+      resp.beginObject("connected");
+      resp.addElem("name", settings.WIFI.ssid);
+      resp.addElem("passphrase", settings.WIFI.passphrase);
+      resp.addElem("strength", (int32_t)WiFi.RSSI());
+      resp.addElem("channel", (int32_t)WiFi.channel());
       resp.endObject();
-    }
-    resp.endArray();
-    resp.endObject();
-    resp.endResponse();
+      resp.beginArray("accessPoints");
+      for(int i = 0; i < n; ++i) {
+        if(WiFi.SSID(i).length() == 0 || WiFi.RSSI(i) < -95) continue; // Ignore hidden and weak networks that we cannot connect to anyway.
+        resp.beginObject();
+        resp.addElem("name", WiFi.SSID(i).c_str());
+        resp.addElem("channel", (int32_t)WiFi.channel(i));
+        resp.addElem("strength", (int32_t)WiFi.RSSI(i));
+        resp.addElem("macAddress", WiFi.BSSIDstr(i).c_str());
+        resp.endObject();
+      }
+      resp.endArray();
+    }, &n);
     });
   onRoute(server, "/reboot", []() { webServer.handleReboot(server);});
   onRoute(server, "/saveSecurity", []() {
@@ -2280,12 +1956,7 @@ void Web::begin() {
       if (method == HTTP_POST || method == HTTP_PUT) {
         somfy.transceiver.fromJSON(obj);
         somfy.transceiver.save();
-        JsonResponse resp;
-        resp.beginResponse(&server, g_content, sizeof(g_content));
-        resp.beginObject();
-        somfy.transceiver.toJSON(resp);
-        resp.endObject();
-        resp.endResponse();
+        sendTransceiver(server);
       }
       else {
         sendError(server, 201, "Invalid HTTP Method: ");
@@ -2438,14 +2109,11 @@ void Web::begin() {
     }
     });
   onRoute(server, "/modulesettings", []() {
-    JsonResponse resp;
-    resp.beginResponse(&server, g_content, sizeof(g_content));
-    resp.beginObject();
-    resp.addElem("fwVersion", settings.fwVersion.name);
-    settings.toJSON(resp);
-    settings.NTP.toJSON(resp);
-    resp.endObject();
-    resp.endResponse();
+    sendJson(server, [](JsonResponse &resp, void *) {
+      resp.addElem("fwVersion", settings.fwVersion.name);
+      settings.toJSON(resp);
+      settings.NTP.toJSON(resp);
+    });
     /*
     DynamicJsonDocument doc(512);
     JsonObject obj = doc.to<JsonObject>();
@@ -2459,22 +2127,19 @@ void Web::begin() {
     */
     });
   onRoute(server, "/networksettings", []() {
-    JsonResponse resp;
-    resp.beginResponse(&server, g_content, sizeof(g_content));
-    resp.beginObject();
-    settings.toJSON(resp);
-    resp.addElem("fwVersion", settings.fwVersion.name);
-    resp.beginObject("ethernet");
-    settings.Ethernet.toJSON(resp);
-    resp.endObject();
-    resp.beginObject("wifi");
-    settings.WIFI.toJSON(resp);
-    resp.endObject();
-    resp.beginObject("ip");
-    settings.IP.toJSON(resp);
-    resp.endObject();
-    resp.endObject();
-    resp.endResponse();
+    sendJson(server, [](JsonResponse &resp, void *) {
+      settings.toJSON(resp);
+      resp.addElem("fwVersion", settings.fwVersion.name);
+      resp.beginObject("ethernet");
+      settings.Ethernet.toJSON(resp);
+      resp.endObject();
+      resp.beginObject("wifi");
+      settings.WIFI.toJSON(resp);
+      resp.endObject();
+      resp.beginObject("ip");
+      settings.IP.toJSON(resp);
+      resp.endObject();
+    });
     
     /*
     DynamicJsonDocument doc(2048);
@@ -2507,12 +2172,7 @@ void Web::begin() {
         settings.MQTT.fromJSON(obj);
         settings.MQTT.save();
         mqtt.resetRetry();
-        JsonResponse resp;
-        resp.beginResponse(&server, g_content, sizeof(g_content));
-        resp.beginObject();
-        settings.MQTT.toJSON(resp);
-        resp.endObject();
-        resp.endResponse();
+        sendJson(server, [](JsonResponse &resp, void *) { settings.MQTT.toJSON(resp); });
         /*
         DynamicJsonDocument sdoc(1024);
         JsonObject sobj = sdoc.to<JsonObject>();
@@ -2566,12 +2226,7 @@ void Web::begin() {
     server.send(200, _encoding_json, g_content);
   });
   onRoute(server, "/mqttsettings", []() {
-    JsonResponse resp;
-    resp.beginResponse(&server, g_content, sizeof(g_content));
-    resp.beginObject();
-    settings.MQTT.toJSON(resp);
-    resp.endObject();
-    resp.endResponse();
+    sendJson(server, [](JsonResponse &resp, void *) { settings.MQTT.toJSON(resp); });
     
     /*
     DynamicJsonDocument doc(1024);
@@ -2667,12 +2322,7 @@ void Web::begin() {
   });  
   onRoute(server, "/beginFrequencyScan", []() {
     somfy.transceiver.beginFrequencyScan();
-    JsonResponse resp;
-    resp.beginResponse(&server, g_content, sizeof(g_content));
-    resp.beginObject();
-    somfy.transceiver.toJSON(resp);
-    resp.endObject();
-    resp.endResponse();
+    sendTransceiver(server);
     /*
     DynamicJsonDocument doc(1024);
     JsonObject obj = doc.to<JsonObject>();
@@ -2683,12 +2333,7 @@ void Web::begin() {
   });
   onRoute(server, "/endFrequencyScan", []() {
     somfy.transceiver.endFrequencyScan();
-    JsonResponse resp;
-    resp.beginResponse(&server, g_content, sizeof(g_content));
-    resp.beginObject();
-    somfy.transceiver.toJSON(resp);
-    resp.endObject();
-    resp.endResponse();
+    sendTransceiver(server);
     /*
     DynamicJsonDocument doc(1024);
     JsonObject obj = doc.to<JsonObject>();
