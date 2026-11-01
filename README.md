@@ -37,6 +37,9 @@ All chips use the same `SomfyController.littlefs.bin`.
 > [!WARNING]
 > `SomfyController.ino.<chip>.bin` contains only the application. **Never write it to address `0x0` over USB:** that overwrites the bootloader, and the board stops booting with `flash read err, 1000`.
 
+### Easiest: the web installer
+Open the [ESPSomfy RTS web installer](https://linuxrrze.github.io/ESPSomfy-RTS/) in Chrome or Edge on a desktop computer and connect the board over USB. It detects the chip and writes the right files to the right addresses. It offers a new installation, which erases everything, and a repair for boards that no longer boot, which keeps the shades. The steps below do the same by hand.
+
 ### New or unbootable board: flash over USB (erases everything)
 Unzip `SomfyController.onboard.<chip>.bin.zip` and write the image to address **`0x0`**. Wi-Fi, settings and shades are erased.
 
