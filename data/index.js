@@ -4661,7 +4661,7 @@ class Firmware {
         let overlay = ui.waitMessage(document.getElementById('divContainer'));
         try {
             let ret = {};
-            ret.resp = await fetch(`https://api.github.com/repos/rstrouse/espsomfy-rts/releases/tags/${tag}`);
+            ret.resp = await fetch(`https://api.github.com/repos/linuxrrze/ESPSomfy-RTS/releases/tags/${tag}`);
             if (ret.resp.ok)
                 ret.info = await ret.resp.json();
             return ret;

@@ -6,6 +6,10 @@
 #include "ConfigSettings.h"
 #include "WResp.h"
 
+// GitHub repository the updates come from, and the branch the Main channel installs. The Main
+// channel downloads the binaries committed in the root of that branch.
+#define GIT_REPO "linuxrrze/ESPSomfy-RTS"
+#define GIT_MAIN_BRANCH "main"
 #define GIT_MAX_RELEASES 5
 #define GIT_STATUS_READY 0
 #define GIT_STATUS_CHECK 1
