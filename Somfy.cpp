@@ -4962,14 +4962,17 @@ void transceiver_config_t::apply() {
     somfy.transceiver.disableReceive();
     bit_length = this->type;    
     if(this->enabled) {
-      bool radioInit = true;
       pref.begin("CC1101");
-      radioInit = pref.getBool("radioInit", true);
-      // If the radio locks up then we can simply reboot and re-enable the radio.
-      pref.putBool("radioInit", false);
+      // The flag is cleared while the radio is set up. If it is still clear the last attempt locked
+      // up, so leave the radio off for this boot and try again on the next one.
+      bool radioInit = pref.getBool("radioInit", true);
+      pref.putBool("radioInit", !radioInit);
       this->radioInit = false;
       pref.end();
-      if(!radioInit) return;
+      if(!radioInit) {
+        LOG_PRINTLN("The radio setup did not finish last time, skipping it until the next boot");
+        return;
+      }
       DEBUG_PRINT("Applying radio settings ");
       DEBUG_PRINTF("Setting Data Pins RX:%u TX:%u\n", this->RXPin, this->TXPin);
       //if(this->TXPin != this->RXPin)
