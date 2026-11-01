@@ -220,7 +220,11 @@ void Web::handleStreamFile(WebServer &server, const char *filename, const char *
   // Load the index html page from the data directory.
   DEBUG_PRINT("Loading file ");
   DEBUG_PRINTLN(filename);
-  File file = LittleFS.open(filename, "r");
+  // Prefer a gzipped copy of the file when the file system image has one. WebServer::streamFile
+  // adds the Content-Encoding: gzip header for files ending in .gz.
+  char gzname[64];
+  snprintf(gzname, sizeof(gzname), "%s.gz", filename);
+  File file = LittleFS.exists(gzname) ? LittleFS.open(gzname, "r") : LittleFS.open(filename, "r");
   if (!file) {
     LOG_PRINT("Error opening");
     LOG_PRINTLN(filename);
