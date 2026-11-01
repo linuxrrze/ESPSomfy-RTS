@@ -1145,8 +1145,6 @@ void Web::begin() {
   onRoute(server, "/", []() { webServer.handleStreamFile(server, "/index.html", _encoding_html); });
   onRoute(server, "/login", []() { webServer.handleLogin(server); });
   onRoute(server, "/loginContext", []() { webServer.handleLoginContext(server); });
-  onRoute(server, "/shades.cfg", []() { webServer.handleStreamFile(server, "/shades.cfg", _encoding_text); });
-  onRoute(server, "/shades.tmp", []() { webServer.handleStreamFile(server, "/shades.tmp", _encoding_text); });
   onRoute(server, "/getReleases", []() {
     GitRepo repo;
     if(repo.getReleases(GIT_MAX_RELEASES, server.hasArg("insecure") && toBoolean(server.arg("insecure").c_str(), false)) == ERR_CERT_VERIFY) {
@@ -2058,32 +2056,6 @@ void Web::begin() {
       }
       esp_task_wdt_reset();
     });
-  onRoute(server, "/updateShadeConfig", HTTP_POST, []() {
-    if(git.lockFS) {
-      sendError(server, 500, "Filesystem update in progress");
-      return;
-    }
-    server.sendHeader("Connection", "close");
-    sendError(server, 200, "Updating Shade Config: ");
-    }, []() {
-      HTTPUpload& upload = server.upload();
-      if (upload.status == UPLOAD_FILE_START) {
-        DEBUG_PRINTF("Update: shades.cfg\n");
-        File fup = LittleFS.open("/shades.tmp", "w");
-        fup.close();
-      }
-      else if (upload.status == UPLOAD_FILE_WRITE) {
-        /* flashing littlefs to ESP*/
-        if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
-          File fup = LittleFS.open("/shades.tmp", "a");
-          fup.write(upload.buf, upload.currentSize);
-          fup.close();
-        }
-      }
-      else if (upload.status == UPLOAD_FILE_END) {
-        somfy.loadShadesFile("/shades.tmp");
-      }
-    });
   onRoute(server, "/updateApplication", HTTP_POST, []() {
     server.sendHeader("Connection", "close");
     if (Update.hasError())
@@ -2229,50 +2201,6 @@ void Web::begin() {
       else {
         sendError(server, 201, "Invalid HTTP Method: ");
       }
-    }
-    });
-  onRoute(server, "/getRadio", []() {
-    JsonResponse resp;
-    resp.beginResponse(&server, g_content, sizeof(g_content));
-    resp.beginObject();
-    somfy.transceiver.toJSON(resp);
-    resp.endObject();
-    resp.endResponse();
-    });
-  onRoute(server, "/sendRemoteCommand", []() {
-    HTTPMethod method = server.method();
-    if (method == HTTP_GET || method == HTTP_PUT || method == HTTP_POST) {
-      somfy_frame_t frame;
-      uint8_t repeats = 0;
-      if (server.hasArg("address")) {
-        frame.remoteAddress = atoi(server.arg("address").c_str());
-        if (server.hasArg("encKey")) frame.encKey = atoi(server.arg("encKey").c_str());
-        if (server.hasArg("command")) frame.cmd = translateSomfyCommand(server.arg("command"));
-        if (server.hasArg("rcode")) frame.rollingCode = atoi(server.arg("rcode").c_str());
-        if (server.hasArg("repeats")) repeats = atoi(server.arg("repeats").c_str());
-      }
-      else if (server.hasArg("plain")) {
-        StaticJsonDocument<128> doc;
-        if(!parseBody(server, doc)) {
-      return;
-    }
-        else {
-          JsonObject obj = doc.as<JsonObject>();
-          String scmd;
-          if (obj.containsKey("address")) frame.remoteAddress = obj["address"];
-          if (obj.containsKey("command")) scmd = obj["command"].as<String>();
-          if (obj.containsKey("repeats")) repeats = obj["repeats"];
-          if (obj.containsKey("rcode")) frame.rollingCode = obj["rcode"];
-          if (obj.containsKey("encKey")) frame.encKey = obj["encKey"];
-          frame.cmd = translateSomfyCommand(scmd.c_str());
-        }
-      }
-      if (frame.remoteAddress > 0 && frame.rollingCode > 0) {
-        somfy.sendFrame(frame, repeats);
-        server.send(200, _encoding_json, F("{\"status\":\"SUCCESS\",\"desc\":\"Command Sent\"}"));
-      }
-      else
-        sendError(server, 500, "No address or rolling code provided");
     }
     });
   onRoute(server, "/setgeneral", []() {
