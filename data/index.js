@@ -4336,6 +4336,7 @@ class Firmware {
                 reject({ htmlError: status, service: 'GET /backup' });
             };
             xhr.open('GET', baseUrl.length > 0 ? `${baseUrl}/backup` : '/backup', true);
+            xhr.setRequestHeader('apikey', security.apiKey);
             xhr.send();
         });
     }
@@ -4765,6 +4766,7 @@ class Firmware {
         let xhr = new XMLHttpRequest();
         //xhr.open('POST', service, true);
         xhr.open('POST', baseUrl.length > 0 ? `${baseUrl}${service}` : service, true);
+        xhr.setRequestHeader('apikey', security.apiKey);
         xhr.upload.onprogress = function (evt) {
             let pct = evt.total ? Math.round((evt.loaded / evt.total) * 100) : 0;
             prog.style.setProperty('--progress', `${pct}%`);

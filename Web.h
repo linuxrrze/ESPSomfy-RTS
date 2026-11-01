@@ -40,6 +40,9 @@ class Web {
     bool createAPIToken(const char *payload, char *token);
     bool createAPIPinToken(const IPAddress ipAddress, const char *pin, char *token);
     bool createAPIPasswordToken(const IPAddress ipAddress, const char *username, const char *password, char *token);
+    // Checks the apikey header for the access level without sending a response.
+    bool checkAuthentication(WebServer &server, bool cfg = false);
+    // Same as checkAuthentication but sends a 401 when the check fails.
     bool isAuthenticated(WebServer &server, bool cfg = false);
 
     //void chunkRoomsResponse(WebServer &server, const char *elem = nullptr);

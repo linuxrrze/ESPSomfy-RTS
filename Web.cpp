@@ -41,6 +41,84 @@ static const char _encoding_json[] = "application/json";
 
 WebServer apiServer(8081);
 WebServer server(80);
+
+// Access levels for the security settings. Control is open when the security permissions
+// only protect the configuration.
+enum class auth_levels : uint8_t { Public, Control, Config };
+struct auth_route_t {
+  const char *uri;
+  auth_levels level;
+};
+// Web UI server routes that do not need the configuration permission. Anything not listed does,
+// so new routes are protected by default.
+static const auth_route_t _ui_routes[] = {
+  {"/", auth_levels::Public}, {"/index.js", auth_levels::Public}, {"/main.css", auth_levels::Public},
+  {"/widgets.css", auth_levels::Public}, {"/icons.css", auth_levels::Public}, {"/favicon.png", auth_levels::Public},
+  {"/icon.png", auth_levels::Public}, {"/icon.svg", auth_levels::Public}, {"/apple-icon.png", auth_levels::Public},
+  {"/login", auth_levels::Public}, {"/loginContext", auth_levels::Public}, {"/upnp.xml", auth_levels::Public},
+  {"/shadeCommand", auth_levels::Control}, {"/groupCommand", auth_levels::Control}, {"/tiltCommand", auth_levels::Control},
+  {"/repeatCommand", auth_levels::Control}, {"/setPositions", auth_levels::Control}, {"/setSensor", auth_levels::Control},
+  {"/setMyPosition", auth_levels::Control}, {"/controller", auth_levels::Control}, {"/rooms", auth_levels::Control},
+  {"/shades", auth_levels::Control}, {"/groups", auth_levels::Control}, {"/room", auth_levels::Control},
+  {"/shade", auth_levels::Control}, {"/group", auth_levels::Control}
+};
+// API server routes that need the configuration permission. Everything else on the API server is
+// open because integrations such as Home Assistant do not send the apikey with commands.
+static const char * const _api_config_routes[] = {"/downloadFirmware", "/backup", "/reboot"};
+
+// Placed in front of all other handlers of a server to enforce the security settings. The
+// WebServer picks the handler before the request headers are read, so this handler claims every
+// request another handler can serve and checks the apikey header before passing it on.
+class AuthHandler : public RequestHandler {
+  public:
+    AuthHandler(bool api) : _api(api) {}
+    bool canHandle(HTTPMethod method, String uri) override {
+      this->_target = nullptr;
+      for(RequestHandler *h = this->next(); h; h = h->next()) {
+        if(h->canHandle(method, uri)) {
+          this->_target = h;
+          break;
+        }
+      }
+      return this->_target != nullptr;
+    }
+    bool canUpload(String uri) override { return this->_target && this->_target->canUpload(uri); }
+    void upload(WebServer &srv, String uri, HTTPUpload &upload) override {
+      // Uploads are written while the body is parsed, before handle() is called.
+      if(this->authorized(srv, uri)) this->_target->upload(srv, uri, upload);
+    }
+    bool handle(WebServer &srv, HTTPMethod method, String uri) override {
+      // CORS preflight requests carry no apikey. Answer them here so they never reach a handler
+      // that does not check the method.
+      if(method == HTTP_OPTIONS) {
+        srv.send(200, _encoding_text, "OK");
+        return true;
+      }
+      if(!this->authorized(srv, uri)) {
+        // Sends the 401.
+        webServer.isAuthenticated(srv, this->level(uri) == auth_levels::Config);
+        return true;
+      }
+      return this->_target->handle(srv, method, uri);
+    }
+  private:
+    bool _api;
+    RequestHandler *_target = nullptr;
+    auth_levels level(const String &uri) {
+      if(this->_api) {
+        for(const char *r : _api_config_routes)
+          if(uri == r) return auth_levels::Config;
+        return auth_levels::Public;
+      }
+      for(const auth_route_t &r : _ui_routes)
+        if(uri == r.uri) return r.level;
+      return auth_levels::Config;
+    }
+    bool authorized(WebServer &srv, const String &uri) {
+      auth_levels lvl = this->level(uri);
+      return lvl == auth_levels::Public || webServer.checkAuthentication(srv, lvl == auth_levels::Config);
+    }
+};
 void Web::startup() {
   DEBUG_PRINTLN("Launching web server...");
 }
@@ -77,27 +155,25 @@ void Web::handleDeserializationError(WebServer &server, DeserializationError &er
       break;
     }
 }
-bool Web::isAuthenticated(WebServer &server, bool cfg) {
-  DEBUG_PRINTLN("Checking authentication");
+bool Web::checkAuthentication(WebServer &server, bool cfg) {
   if(settings.Security.type == security_types::None) return true;
-  else if(!cfg && (settings.Security.permissions & static_cast<uint8_t>(security_permissions::ConfigOnly)) == 0x01) return true;
-  else if(server.hasHeader("apikey")) {
-    // Api key was supplied.
-    DEBUG_PRINTLN("Checking API Key...");
-    char token[65];
-    memset(token, 0x00, sizeof(token));
-    this->createAPIToken(server.client().remoteIP(), token);
-    // Compare the tokens.
-    if(String(token) != server.header("apikey")) return false;
-    server.sendHeader("apikey", token);
-  }
-  else {
-    // Send a 401
-    DEBUG_PRINTLN("Not authenticated...");
-    server.send(401, "Unauthorized API Key");
-    return false;
-  }
-  return true;
+  if(!cfg && (settings.Security.permissions & static_cast<uint8_t>(security_permissions::ConfigOnly)) == 0x01) return true;
+  if(!server.hasHeader("apikey")) return false;
+  char token[65];
+  memset(token, 0x00, sizeof(token));
+  this->createAPIToken(server.client().remoteIP(), token);
+  // Compare in constant time so the response time does not leak how much of the key matched.
+  String key = server.header("apikey");
+  if(key.length() != strlen(token)) return false;
+  uint8_t diff = 0;
+  for(size_t i = 0; i < key.length(); i++) diff |= key[i] ^ token[i];
+  return diff == 0;
+}
+bool Web::isAuthenticated(WebServer &server, bool cfg) {
+  if(this->checkAuthentication(server, cfg)) return true;
+  DEBUG_PRINTF("Not authenticated: %s\n", server.uri().c_str());
+  server.send(401, _encoding_json, F("{\"status\":\"ERROR\",\"desc\":\"Unauthorized\"}"));
+  return false;
 }
 bool Web::createAPIPinToken(const IPAddress ipAddress, const char *pin, char *token) {
   return this->createAPIToken((String(pin) + ":" + ipAddress.toString()).c_str(), token);
@@ -109,18 +185,18 @@ bool Web::createAPIToken(const char *payload, char *token) {
     byte hmacResult[32];
     mbedtls_md_context_t ctx;
     mbedtls_md_type_t md_type = MBEDTLS_MD_SHA256;
+    mbedtls_md_init(&ctx);
     mbedtls_md_setup(&ctx, mbedtls_md_info_from_type(md_type), 1);
     mbedtls_md_hmac_starts(&ctx, (const unsigned char *)settings.serverId, strlen(settings.serverId));
-    mbedtls_md_hmac_update(&ctx, (const unsigned char *)payload, strlen(payload)); 
+    mbedtls_md_hmac_update(&ctx, (const unsigned char *)payload, strlen(payload));
     mbedtls_md_hmac_finish(&ctx, hmacResult);
-    DEBUG_PRINT("Hash: ");
+    mbedtls_md_free(&ctx);
     token[0] = '\0';
     for(int i = 0; i < sizeof(hmacResult); i++){
         char str[3];
         sprintf(str, "%02x", (int)hmacResult[i]);
         strcat(token, str);
     }
-    DEBUG_PRINTLN(token);
     return true;
 }
 bool Web::createAPIToken(const IPAddress ipAddress, char *token) {
@@ -1063,6 +1139,9 @@ void Web::handleReboot(WebServer &server) {
 }
 void Web::begin() {
   DEBUG_PRINTLN("Creating Web MicroServices...");
+  // Must be the first handlers so they see every request.
+  server.addHandler(new AuthHandler(false));
+  apiServer.addHandler(new AuthHandler(true));
   server.enableCORS(true);
   const char *keys[1] = {"apikey"};
   server.collectHeaders(keys, 1);
