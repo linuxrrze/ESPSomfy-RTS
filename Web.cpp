@@ -3,6 +3,7 @@
 #include <LittleFS.h>
 #include <Update.h>
 #include <esp_task_wdt.h>
+#include "Log.h"
 #include "mbedtls/md.h"
 #include "ConfigSettings.h"
 #include "ConfigFile.h"
@@ -41,7 +42,7 @@ static const char _encoding_json[] = "application/json";
 WebServer apiServer(8081);
 WebServer server(80);
 void Web::startup() {
-  Serial.println("Launching web server...");
+  DEBUG_PRINTLN("Launching web server...");
 }
 void Web::loop() {
   server.handleClient();
@@ -77,12 +78,12 @@ void Web::handleDeserializationError(WebServer &server, DeserializationError &er
     }
 }
 bool Web::isAuthenticated(WebServer &server, bool cfg) {
-  Serial.println("Checking authentication");
+  DEBUG_PRINTLN("Checking authentication");
   if(settings.Security.type == security_types::None) return true;
   else if(!cfg && (settings.Security.permissions & static_cast<uint8_t>(security_permissions::ConfigOnly)) == 0x01) return true;
   else if(server.hasHeader("apikey")) {
     // Api key was supplied.
-    Serial.println("Checking API Key...");
+    DEBUG_PRINTLN("Checking API Key...");
     char token[65];
     memset(token, 0x00, sizeof(token));
     this->createAPIToken(server.client().remoteIP(), token);
@@ -92,7 +93,7 @@ bool Web::isAuthenticated(WebServer &server, bool cfg) {
   }
   else {
     // Send a 401
-    Serial.println("Not authenticated...");
+    DEBUG_PRINTLN("Not authenticated...");
     server.send(401, "Unauthorized API Key");
     return false;
   }
@@ -112,14 +113,14 @@ bool Web::createAPIToken(const char *payload, char *token) {
     mbedtls_md_hmac_starts(&ctx, (const unsigned char *)settings.serverId, strlen(settings.serverId));
     mbedtls_md_hmac_update(&ctx, (const unsigned char *)payload, strlen(payload)); 
     mbedtls_md_hmac_finish(&ctx, hmacResult);
-    Serial.print("Hash: ");
+    DEBUG_PRINT("Hash: ");
     token[0] = '\0';
     for(int i = 0; i < sizeof(hmacResult); i++){
         char str[3];
         sprintf(str, "%02x", (int)hmacResult[i]);
         strcat(token, str);
     }
-    Serial.println(token);
+    DEBUG_PRINTLN(token);
     return true;
 }
 bool Web::createAPIToken(const IPAddress ipAddress, char *token) {
@@ -130,7 +131,7 @@ bool Web::createAPIToken(const IPAddress ipAddress, char *token) {
     return true;
 }
 void Web::handleLogout(WebServer &server) {
-  Serial.println("Logging out of webserver");
+  DEBUG_PRINTLN("Logging out of webserver");
   server.sendHeader("Location", "/");
   server.sendHeader("Cache-Control", "no-cache");
   server.sendHeader("Set-Cookie", "ESPSOMFYID=0");
@@ -153,7 +154,7 @@ void Web::handleLogin(WebServer &server) {
       server.send(200, _encoding_json, g_content);
       return;
     }
-    Serial.println("Web logging in...");
+    DEBUG_PRINTLN("Web logging in...");
     char username[33] = "";
     char password[33] = "";
     char pin[5] = "";
@@ -181,8 +182,8 @@ void Web::handleLogin(WebServer &server) {
     }
     // At this point we should have all the data we need to login.
     if(settings.Security.type == security_types::PinEntry) {
-      Serial.print("Validating pin ");
-      Serial.println(pin);
+      DEBUG_PRINT("Validating pin ");
+      DEBUG_PRINTLN(pin);
       if(strlen(pin) == 0 || strcmp(pin, settings.Security.pin) != 0) {
         obj["success"] = false;
         obj["msg"] = "Invalid Pin Entry";
@@ -217,12 +218,12 @@ void Web::handleStreamFile(WebServer &server, const char *filename, const char *
   if(server.method() == HTTP_OPTIONS) { server.send(200, "OK"); return; }
   esp_task_wdt_reset();
   // Load the index html page from the data directory.
-  Serial.print("Loading file ");
-  Serial.println(filename);
+  DEBUG_PRINT("Loading file ");
+  DEBUG_PRINTLN(filename);
   File file = LittleFS.open(filename, "r");
   if (!file) {
-    Serial.print("Error opening");
-    Serial.println(filename);
+    LOG_PRINT("Error opening");
+    LOG_PRINTLN(filename);
     server.send(500, _encoding_text, "Error opening file");
   }
   esp_task_wdt_delete(NULL);
@@ -358,7 +359,7 @@ void Web::handleShadeCommand(WebServer& server) {
       if(server.hasArg("stepSize")) stepSize = atoi(server.arg("stepSize").c_str());
     }
     else if (server.hasArg("plain")) {
-      Serial.println("Sending Shade Command");
+      DEBUG_PRINTLN("Sending Shade Command");
       DynamicJsonDocument doc(512);
       DeserializationError err = deserializeJson(doc, server.arg("plain"));
       if (err) {
@@ -383,8 +384,8 @@ void Web::handleShadeCommand(WebServer& server) {
     else server.send(500, _encoding_json, F("{\"status\":\"ERROR\",\"desc\":\"No shade object supplied.\"}"));
     SomfyShade* shade = somfy.getShadeById(shadeId);
     if (shade) {
-      Serial.print("Received:");
-      Serial.println(server.arg("plain"));
+      DEBUG_PRINT("Received:");
+      DEBUG_PRINTLN(server.arg("plain"));
       // Send the command to the shade.
       if (target <= 100)
           shade->moveToTarget(shade->transformPosition(target));
@@ -505,7 +506,7 @@ void Web::handleGroupCommand(WebServer &server) {
       if(server.hasArg("stepSize")) stepSize = atoi(server.arg("stepSize").c_str());
     }
     else if (server.hasArg("plain")) {
-      Serial.println("Sending Group Command");
+      DEBUG_PRINTLN("Sending Group Command");
       DynamicJsonDocument doc(256);
       DeserializationError err = deserializeJson(doc, server.arg("plain"));
       if (err) {
@@ -530,8 +531,8 @@ void Web::handleGroupCommand(WebServer &server) {
     else server.send(500, _encoding_json, F("{\"status\":\"ERROR\",\"desc\":\"No group object supplied.\"}"));
     SomfyGroup * group = somfy.getGroupById(groupId);
     if (group) {
-      Serial.print("Received:");
-      Serial.println(server.arg("plain"));
+      DEBUG_PRINT("Received:");
+      DEBUG_PRINTLN(server.arg("plain"));
       // Send the command to the group.
       group->sendCommand(command, repeat >= 0 ? repeat : group->repeats, stepSize);
       JsonResponse resp;
@@ -562,7 +563,7 @@ void Web::handleTiltCommand(WebServer &server) {
       else if(server.hasArg("target")) target = atoi(server.arg("target").c_str());
     }
     else if (server.hasArg("plain")) {
-      Serial.println("Sending Shade Tilt Command");
+      DEBUG_PRINTLN("Sending Shade Tilt Command");
       DynamicJsonDocument doc(256);
       DeserializationError err = deserializeJson(doc, server.arg("plain"));
       if (err) {
@@ -585,8 +586,8 @@ void Web::handleTiltCommand(WebServer &server) {
     else server.send(500, _encoding_json, F("{\"status\":\"ERROR\",\"desc\":\"No shade object supplied.\"}"));
     SomfyShade* shade = somfy.getShadeById(shadeId);
     if (shade) {
-      Serial.print("Received:");
-      Serial.println(server.arg("plain"));
+      DEBUG_PRINT("Received:");
+      DEBUG_PRINTLN(server.arg("plain"));
       // Send the command to the shade.
       if(target <= 100)
         shade->moveToTiltTarget(shade->transformPosition(target));
@@ -631,7 +632,7 @@ void Web::handleRoom(WebServer &server) {
   else if (method == HTTP_PUT || method == HTTP_POST) {
     // We are updating an existing room.
     if (server.hasArg("plain")) {
-      Serial.println("Updating a room");
+      DEBUG_PRINTLN("Updating a room");
       DynamicJsonDocument doc(512);
       DeserializationError err = deserializeJson(doc, server.arg("plain"));
       if (err) {
@@ -693,7 +694,7 @@ void Web::handleShade(WebServer &server) {
   else if (method == HTTP_PUT || method == HTTP_POST) {
     // We are updating an existing shade.
     if (server.hasArg("plain")) {
-      Serial.println("Updating a shade");
+      DEBUG_PRINTLN("Updating a shade");
       DynamicJsonDocument doc(512);
       DeserializationError err = deserializeJson(doc, server.arg("plain"));
       if (err) {
@@ -755,7 +756,7 @@ void Web::handleGroup(WebServer &server) {
   else if (method == HTTP_PUT || method == HTTP_POST) {
     // We are updating an existing group.
     if (server.hasArg("plain")) {
-      Serial.println("Updating a group");
+      DEBUG_PRINTLN("Updating a group");
       DynamicJsonDocument doc(512);
       DeserializationError err = deserializeJson(doc, server.arg("plain"));
       if (err) {
@@ -789,7 +790,7 @@ void Web::handleGroup(WebServer &server) {
 void Web::handleDiscovery(WebServer &server) {
   HTTPMethod method = apiServer.method();
   if (method == HTTP_POST || method == HTTP_GET) {
-    Serial.println("Discovery Requested");
+    DEBUG_PRINTLN("Discovery Requested");
     char connType[10] = "Unknown";
     if(net.connType == conn_types_t::ethernet) strcpy(connType, "Ethernet");
     else if(net.connType == conn_types_t::wifi) strcpy(connType, "Wifi");
@@ -849,15 +850,15 @@ void Web::handleBackup(WebServer &server, bool attach) {
       }
     }
     snprintf(filename, sizeof(filename), "attachment; filename=\"ESPSomfyRTS %s.backup\"", iso);
-    Serial.println(filename);
+    DEBUG_PRINTLN(filename);
     server.sendHeader(F("Content-Disposition"), filename);
     server.sendHeader(F("Access-Control-Expose-Headers"), F("Content-Disposition"));
   }
-  Serial.println("Saving current shade information");
+  DEBUG_PRINTLN("Saving current shade information");
   somfy.writeBackup();
   File file = LittleFS.open("/controller.backup", "r");
   if (!file) {
-    Serial.println("Error opening shades.cfg");
+    LOG_PRINTLN("Error opening shades.cfg");
     server.send(500, _encoding_text, "shades.cfg");
     return;
   }
@@ -979,7 +980,7 @@ void Web::handleDownloadFirmware(WebServer &server) {
   GitRepo repo;
   GitRelease *rel = nullptr;
   int8_t err = repo.getReleases();
-  Serial.println("downloadFirmware called...");
+  DEBUG_PRINTLN("downloadFirmware called...");
   if(err == 0) {
     if(server.hasArg("ver")) {
       if(strcmp(server.arg("ver").c_str(), "latest") == 0) rel = &repo.releases[0];
@@ -1016,25 +1017,25 @@ void Web::handleDownloadFirmware(WebServer &server) {
 }
 void Web::handleNotFound(WebServer &server) {
     HTTPMethod method = server.method();
-    Serial.printf("Request %s 404-%d ", server.uri().c_str(), method);
+    DEBUG_PRINTF("Request %s 404-%d ", server.uri().c_str(), method);
     switch (method) {
     case HTTP_POST:
-      Serial.print("POST ");
+      DEBUG_PRINT("POST ");
       break;
     case HTTP_GET:
-      Serial.print("GET ");
+      DEBUG_PRINT("GET ");
       break;
     case HTTP_PUT:
-      Serial.print("PUT ");
+      DEBUG_PRINT("PUT ");
       break;
     case HTTP_OPTIONS:
-      Serial.println("OPTIONS ");
+      DEBUG_PRINTLN("OPTIONS ");
       server.send(200, "OK");
       return;
     default:
-      Serial.print("[");
-      Serial.print(method);
-      Serial.print("]");
+      DEBUG_PRINT("[");
+      DEBUG_PRINT(method);
+      DEBUG_PRINT("]");
       break;
 
     }
@@ -1046,7 +1047,7 @@ void Web::handleReboot(WebServer &server) {
   if(server.method() == HTTP_OPTIONS) { server.send(200, "OK"); return; }
   HTTPMethod method = server.method();
   if (method == HTTP_POST || method == HTTP_PUT) {
-    Serial.println("Rebooting ESP...");
+    DEBUG_PRINTLN("Rebooting ESP...");
     rebootDelay.reboot = true;
     rebootDelay.rebootTime = millis() + 500;
     server.send(200, "application/json", "{\"status\":\"OK\",\"desc\":\"Successfully started reboot\"}");
@@ -1056,7 +1057,7 @@ void Web::handleReboot(WebServer &server) {
   }
 }
 void Web::begin() {
-  Serial.println("Creating Web MicroServices...");
+  DEBUG_PRINTLN("Creating Web MicroServices...");
   server.enableCORS(true);
   const char *keys[1] = {"apikey"};
   server.collectHeaders(keys, 1);
@@ -1136,7 +1137,7 @@ void Web::begin() {
       server.send(200, _encoding_json, "{\"status\":\"Success\",\"desc\":\"Restoring Shade settings\"}");
       restore_options_t opts;
       if(server.hasArg("data")) {
-        Serial.println(server.arg("data"));
+        DEBUG_PRINTLN(server.arg("data"));
         StaticJsonDocument<256> doc;
         DeserializationError err = deserializeJson(doc, server.arg("data"));
         if (err) {
@@ -1149,11 +1150,11 @@ void Web::begin() {
         }
       }
       else {
-        Serial.println("No restore options sent.  Using defaults...");
+        DEBUG_PRINTLN("No restore options sent.  Using defaults...");
         opts.shades = true;
       }
       ShadeConfigFile::restore(&somfy, "/shades.tmp", opts);
-      Serial.println("Rebooting ESP for restored settings...");
+      DEBUG_PRINTLN("Rebooting ESP for restored settings...");
       rebootDelay.reboot = true;
       rebootDelay.rebootTime = millis() + 1000;
     }
@@ -1162,7 +1163,7 @@ void Web::begin() {
       HTTPUpload& upload = server.upload();
       if (upload.status == UPLOAD_FILE_START) {
         webServer.uploadSuccess = false;
-        Serial.printf("Restore: %s\n", upload.filename.c_str());
+        DEBUG_PRINTF("Restore: %s\n", upload.filename.c_str());
         // Begin by opening a new temporary file.
         File fup = LittleFS.open("/shades.tmp", "w");
         fup.close();
@@ -1170,7 +1171,7 @@ void Web::begin() {
       else if (upload.status == UPLOAD_FILE_WRITE) {
         File fup = LittleFS.open("/shades.tmp", "a");
         //upload.buf[upload.currentSize] = 0x00;
-        //Serial.print((char *)upload.buf);
+        //DEBUG_PRINT((char *)upload.buf);
         fup.write(upload.buf, upload.currentSize);
         fup.close();
       }
@@ -1238,7 +1239,7 @@ void Web::begin() {
     HTTPMethod method = server.method();
     SomfyRoom * room = nullptr;
     if (method == HTTP_POST || method == HTTP_PUT) {
-      Serial.println("Adding a room");
+      DEBUG_PRINTLN("Adding a room");
       DynamicJsonDocument doc(512);
       DeserializationError err = deserializeJson(doc, server.arg("plain"));
       if (err) {
@@ -1247,13 +1248,13 @@ void Web::begin() {
       }
       else {
         JsonObject obj = doc.as<JsonObject>();
-        Serial.println("Counting rooms");
+        DEBUG_PRINTLN("Counting rooms");
         if (somfy.roomCount() > SOMFY_MAX_ROOMS) {
           server.send(500, _encoding_json, F("{\"status\":\"ERROR\",\"desc\":\"Maximum number of rooms exceeded.\"}"));
           return;
         }
         else {
-          Serial.println("Adding room");
+          DEBUG_PRINTLN("Adding room");
           room = somfy.addRoom(obj);
           if (!room) {
             server.send(500, _encoding_json, F("{\"status\":\"ERROR\",\"desc\":\"Error adding room.\"}"));
@@ -1279,7 +1280,7 @@ void Web::begin() {
     HTTPMethod method = server.method();
     SomfyShade* shade = nullptr;
     if (method == HTTP_POST || method == HTTP_PUT) {
-      Serial.println("Adding a shade");
+      DEBUG_PRINTLN("Adding a shade");
       DynamicJsonDocument doc(1024);
       DeserializationError err = deserializeJson(doc, server.arg("plain"));
       if (err) {
@@ -1288,13 +1289,13 @@ void Web::begin() {
       }
       else {
         JsonObject obj = doc.as<JsonObject>();
-        Serial.println("Counting shades");
+        DEBUG_PRINTLN("Counting shades");
         if (somfy.shadeCount() > SOMFY_MAX_SHADES) {
           server.send(500, _encoding_json, F("{\"status\":\"ERROR\",\"desc\":\"Maximum number of shades exceeded.\"}"));
           return;
         }
         else {
-          Serial.println("Adding shade");
+          DEBUG_PRINTLN("Adding shade");
           shade = somfy.addShade(obj);
           if (!shade) {
             server.send(500, _encoding_json, F("{\"status\":\"ERROR\",\"desc\":\"Error adding shade.\"}"));
@@ -1304,7 +1305,7 @@ void Web::begin() {
       }
     }
     if (shade) {
-      //Serial.println("Serializing shade");
+      //DEBUG_PRINTLN("Serializing shade");
       JsonResponse resp;
       resp.beginResponse(&server, g_content, sizeof(g_content));
       resp.beginObject();
@@ -1321,7 +1322,7 @@ void Web::begin() {
     HTTPMethod method = server.method();
     SomfyGroup * group = nullptr;
     if (method == HTTP_POST || method == HTTP_PUT) {
-      Serial.println("Adding a group");
+      DEBUG_PRINTLN("Adding a group");
       DynamicJsonDocument doc(512);
       DeserializationError err = deserializeJson(doc, server.arg("plain"));
       if (err) {
@@ -1330,13 +1331,13 @@ void Web::begin() {
       }
       else {
         JsonObject obj = doc.as<JsonObject>();
-        Serial.println("Counting shades");
+        DEBUG_PRINTLN("Counting shades");
         if (somfy.groupCount() > SOMFY_MAX_GROUPS) {
           server.send(500, _encoding_json, F("{\"status\":\"ERROR\",\"desc\":\"Maximum number of groups exceeded.\"}"));
           return;
         }
         else {
-          Serial.println("Adding group");
+          DEBUG_PRINTLN("Adding group");
           group = somfy.addGroup(obj);
           if (!group) {
             server.send(500, _encoding_json, F("{\"status\":\"ERROR\",\"desc\":\"Error adding group.\"}"));
@@ -1407,7 +1408,7 @@ void Web::begin() {
     if (method == HTTP_PUT || method == HTTP_POST) {
       // We are updating an existing room.
       if (server.hasArg("plain")) {
-        Serial.println("Updating a room");
+        DEBUG_PRINTLN("Updating a room");
         DynamicJsonDocument doc(512);
         DeserializationError err = deserializeJson(doc, server.arg("plain"));
         if (err) {
@@ -1444,7 +1445,7 @@ void Web::begin() {
     if (method == HTTP_PUT || method == HTTP_POST) {
       // We are updating an existing shade.
       if (server.hasArg("plain")) {
-        Serial.println("Updating a shade");
+        DEBUG_PRINTLN("Updating a shade");
         DynamicJsonDocument doc(1024);
         DeserializationError err = deserializeJson(doc, server.arg("plain"));
         if (err) {
@@ -1486,7 +1487,7 @@ void Web::begin() {
     if (method == HTTP_PUT || method == HTTP_POST) {
       // We are updating an existing shade.
       if (server.hasArg("plain")) {
-        Serial.println("Updating a group");
+        DEBUG_PRINTLN("Updating a group");
         DynamicJsonDocument doc(512);
         DeserializationError err = deserializeJson(doc, server.arg("plain"));
         if (err) {
@@ -1694,7 +1695,7 @@ void Web::begin() {
       // We are adding a linked repeater.
       uint32_t address = 0;
       if (server.hasArg("plain")) {
-        Serial.println("Linking a repeater");
+        DEBUG_PRINTLN("Linking a repeater");
         DynamicJsonDocument doc(512);
         DeserializationError err = deserializeJson(doc, server.arg("plain"));
         if (err) {
@@ -1730,7 +1731,7 @@ void Web::begin() {
       // We are adding a linked repeater.
       uint32_t address = 0;
       if (server.hasArg("plain")) {
-        Serial.println("Unlinking a repeater");
+        DEBUG_PRINTLN("Unlinking a repeater");
         DynamicJsonDocument doc(512);
         DeserializationError err = deserializeJson(doc, server.arg("plain"));
         if (err) {
@@ -1805,7 +1806,7 @@ void Web::begin() {
     if (method == HTTP_PUT || method == HTTP_POST) {
       // We are updating an existing shade by adding a linked remote.
       if (server.hasArg("plain")) {
-        Serial.println("Linking a remote");
+        DEBUG_PRINTLN("Linking a remote");
         DynamicJsonDocument doc(512);
         DeserializationError err = deserializeJson(doc, server.arg("plain"));
         if (err) {
@@ -1845,7 +1846,7 @@ void Web::begin() {
     HTTPMethod method = server.method();
     if (method == HTTP_PUT || method == HTTP_POST) {
       if (server.hasArg("plain")) {
-        Serial.println("Linking a shade to a group");
+        DEBUG_PRINTLN("Linking a shade to a group");
         DynamicJsonDocument doc(512);
         DeserializationError err = deserializeJson(doc, server.arg("plain"));
         if (err) {
@@ -1892,7 +1893,7 @@ void Web::begin() {
     HTTPMethod method = server.method();
     if (method == HTTP_PUT || method == HTTP_POST) {
       if (server.hasArg("plain")) {
-        Serial.println("Unlinking a shade from a group");
+        DEBUG_PRINTLN("Unlinking a shade from a group");
         DynamicJsonDocument doc(512);
         DeserializationError err = deserializeJson(doc, server.arg("plain"));
         if (err) {
@@ -1952,7 +1953,7 @@ void Web::begin() {
         roomId = atoi(server.arg("roomId").c_str());
       }
       else if (server.hasArg("plain")) {
-        Serial.println("Deleting a Room");
+        DEBUG_PRINTLN("Deleting a Room");
         DynamicJsonDocument doc(256);
         DeserializationError err = deserializeJson(doc, server.arg("plain"));
         if (err) {
@@ -1984,7 +1985,7 @@ void Web::begin() {
         shadeId = atoi(server.arg("shadeId").c_str());
       }
       else if (server.hasArg("plain")) {
-        Serial.println("Deleting a shade");
+        DEBUG_PRINTLN("Deleting a shade");
         DynamicJsonDocument doc(256);
         DeserializationError err = deserializeJson(doc, server.arg("plain"));
         if (err) {
@@ -2019,7 +2020,7 @@ void Web::begin() {
         groupId = atoi(server.arg("groupId").c_str());
       }
       else if (server.hasArg("plain")) {
-        Serial.println("Deleting a group");
+        DEBUG_PRINTLN("Deleting a group");
         DynamicJsonDocument doc(256);
         DeserializationError err = deserializeJson(doc, server.arg("plain"));
         if (err) {
@@ -2054,7 +2055,7 @@ void Web::begin() {
       HTTPUpload& upload = server.upload();
       if (upload.status == UPLOAD_FILE_START) {
         webServer.uploadSuccess = false;
-        Serial.printf("Update: %s - %d\n", upload.filename.c_str(), upload.totalSize);
+        DEBUG_PRINTF("Update: %s - %d\n", upload.filename.c_str(), upload.totalSize);
         //if(!Update.begin(upload.totalSize, U_SPIFFS)) {
         if (!Update.begin(UPDATE_SIZE_UNKNOWN)) { //start with max available size
           Update.printError(Serial);
@@ -2065,20 +2066,20 @@ void Web::begin() {
         }
       }
       else if(upload.status == UPLOAD_FILE_ABORTED) {
-        Serial.printf("Upload of %s aborted\n", upload.filename.c_str());
+        DEBUG_PRINTF("Upload of %s aborted\n", upload.filename.c_str());
         Update.abort();
       }
       else if (upload.status == UPLOAD_FILE_WRITE) {
         /* flashing firmware to ESP*/
         if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
           Update.printError(Serial);
-          Serial.printf("Upload of %s aborted invalid size %d\n", upload.filename.c_str(), upload.currentSize);
+          LOG_PRINTF("Upload of %s aborted invalid size %d\n", upload.filename.c_str(), upload.currentSize);
           Update.abort();
         }
       }
       else if (upload.status == UPLOAD_FILE_END) {
         if (Update.end(true)) { //true to set the size to the current progress
-          Serial.printf("Update Success: %u\nRebooting...\n", upload.totalSize);
+          DEBUG_PRINTF("Update Success: %u\nRebooting...\n", upload.totalSize);
           webServer.uploadSuccess = true;
         }
         else {
@@ -2099,7 +2100,7 @@ void Web::begin() {
     }, []() {
       HTTPUpload& upload = server.upload();
       if (upload.status == UPLOAD_FILE_START) {
-        Serial.printf("Update: shades.cfg\n");
+        DEBUG_PRINTF("Update: shades.cfg\n");
         File fup = LittleFS.open("/shades.tmp", "w");
         fup.close();
       }
@@ -2129,7 +2130,7 @@ void Web::begin() {
       HTTPUpload& upload = server.upload();
       if (upload.status == UPLOAD_FILE_START) {
         webServer.uploadSuccess = false;
-        Serial.printf("Update: %s %d\n", upload.filename.c_str(), upload.totalSize);
+        DEBUG_PRINTF("Update: %s %d\n", upload.filename.c_str(), upload.totalSize);
         //if(!Update.begin(upload.totalSize, U_SPIFFS)) {
         if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_SPIFFS)) { //start with max available size and tell it we are updating the file system.
           Update.printError(Serial);
@@ -2140,7 +2141,7 @@ void Web::begin() {
         }
       }
       else if(upload.status == UPLOAD_FILE_ABORTED) {
-        Serial.printf("Upload of %s aborted\n", upload.filename.c_str());
+        DEBUG_PRINTF("Upload of %s aborted\n", upload.filename.c_str());
         Update.abort();
         somfy.commit();
       }
@@ -2148,14 +2149,14 @@ void Web::begin() {
         /* flashing littlefs to ESP*/
         if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
           Update.printError(Serial);
-          Serial.printf("Upload of %s aborted invalid size %d\n", upload.filename.c_str(), upload.currentSize);
+          LOG_PRINTF("Upload of %s aborted invalid size %d\n", upload.filename.c_str(), upload.currentSize);
           Update.abort();
         }
       }
       else if (upload.status == UPLOAD_FILE_END) {
         if (Update.end(true)) { //true to set the size to the current progress
           webServer.uploadSuccess = true;
-          Serial.printf("Update Success: %u\nRebooting...\n", upload.totalSize);
+          DEBUG_PRINTF("Update Success: %u\nRebooting...\n", upload.totalSize);
           somfy.commit();
         }
         else {
@@ -2175,9 +2176,9 @@ void Web::begin() {
     int n = WiFi.scanNetworks(false, true);
     esp_task_wdt_add(NULL);
     
-    Serial.print("Scanned ");
-    Serial.print(n);
-    Serial.println(" networks");
+    DEBUG_PRINT("Scanned ");
+    DEBUG_PRINT(n);
+    DEBUG_PRINTLN(" networks");
     // Ok we need to chunk this response as well.
     JsonResponse resp;
     resp.beginResponse(&server, g_content, sizeof(g_content));
@@ -2209,8 +2210,8 @@ void Web::begin() {
     DynamicJsonDocument doc(512);
     DeserializationError err = deserializeJson(doc, server.arg("plain"));
     if (err) {
-      Serial.print("Error parsing JSON ");
-      Serial.println(err.c_str());
+      LOG_PRINT("Error parsing JSON ");
+      LOG_PRINTLN(err.c_str());
       String msg = err.c_str();
       server.send(400, _encoding_html, "Error parsing JSON body<br>" + msg);
     }
@@ -2248,8 +2249,8 @@ void Web::begin() {
     DynamicJsonDocument doc(512);
     DeserializationError err = deserializeJson(doc, server.arg("plain"));
     if (err) {
-      Serial.print("Error parsing JSON ");
-      Serial.println(err.c_str());
+      LOG_PRINT("Error parsing JSON ");
+      LOG_PRINTLN(err.c_str());
       String msg = err.c_str();
       server.send(400, _encoding_html, "Error parsing JSON body<br>" + msg);
     }
@@ -2325,9 +2326,9 @@ void Web::begin() {
     if(server.method() == HTTP_OPTIONS) { server.send(200, "OK"); return; }
     DynamicJsonDocument doc(512);
     
-    Serial.print("Plain: ");
-    Serial.print(server.method());
-    Serial.println(server.arg("plain"));
+    DEBUG_PRINT("Plain: ");
+    DEBUG_PRINT(server.method());
+    DEBUG_PRINTLN(server.arg("plain"));
     DeserializationError err = deserializeJson(doc, server.arg("plain"));
     if (err) {
       webServer.handleDeserializationError(server, err);
@@ -2362,8 +2363,8 @@ void Web::begin() {
     DynamicJsonDocument doc(1024);
     DeserializationError err = deserializeJson(doc, server.arg("plain"));
     if (err) {
-      Serial.print("Error parsing JSON ");
-      Serial.println(err.c_str());
+      LOG_PRINT("Error parsing JSON ");
+      LOG_PRINTLN(err.c_str());
       String msg = err.c_str();
       server.send(400, _encoding_html, "Error parsing JSON body<br>" + msg);
     }
@@ -2401,7 +2402,7 @@ void Web::begin() {
           settings.Ethernet.save();
         }
         if (reboot) {
-          Serial.println("Rebooting ESP for new Network settings...");
+          DEBUG_PRINTLN("Rebooting ESP for new Network settings...");
           rebootDelay.reboot = true;
           rebootDelay.rebootTime = millis() + 1000;
         }
@@ -2415,7 +2416,7 @@ void Web::begin() {
   server.on("/setIP", []() {
     webServer.sendCORSHeaders(server);
     if(server.method() == HTTP_OPTIONS) { server.send(200, "OK"); return; }
-    Serial.println("Setting IP...");
+    DEBUG_PRINTLN("Setting IP...");
     DynamicJsonDocument doc(1024);
     DeserializationError err = deserializeJson(doc, server.arg("plain"));
     if (err) {
@@ -2438,7 +2439,7 @@ void Web::begin() {
   server.on("/connectwifi", []() {
     webServer.sendCORSHeaders(server);
     if(server.method() == HTTP_OPTIONS) { server.send(200, "OK"); return; }
-    Serial.println("Settings WIFI connection...");
+    DEBUG_PRINTLN("Settings WIFI connection...");
     DynamicJsonDocument doc(512);
     DeserializationError err = deserializeJson(doc, server.arg("plain"));
     if (err) {
@@ -2448,8 +2449,8 @@ void Web::begin() {
     else {
       JsonObject obj = doc.as<JsonObject>();
       HTTPMethod method = server.method();
-      //Serial.print(F("HTTP Method: "));
-      //Serial.println(server.method());
+      //DEBUG_PRINT(F("HTTP Method: "));
+      //DEBUG_PRINTLN(server.method());
       if (method == HTTP_POST || method == HTTP_PUT) {
         String ssid = "";
         String passphrase = "";
@@ -2468,7 +2469,7 @@ void Web::begin() {
           settings.WIFI.print();
           server.send(201, _encoding_json, "{\"status\":\"OK\",\"desc\":\"Successfully set server connection\"}");
           if (reboot) {
-            Serial.println("Rebooting ESP for new WiFi settings...");
+            DEBUG_PRINTLN("Rebooting ESP for new WiFi settings...");
             rebootDelay.reboot = true;
             rebootDelay.rebootTime = millis() + 1000;
           }
@@ -2546,9 +2547,9 @@ void Web::begin() {
     else {
       JsonObject obj = doc.as<JsonObject>();
       HTTPMethod method = server.method();
-      Serial.print("Saving MQTT ");
-      Serial.print(F("HTTP Method: "));
-      Serial.println(server.method());
+      DEBUG_PRINT("Saving MQTT ");
+      DEBUG_PRINT(F("HTTP Method: "));
+      DEBUG_PRINTLN(server.method());
       if (method == HTTP_POST || method == HTTP_PUT) {
         mqtt.disconnect();
         settings.MQTT.fromJSON(obj);
@@ -2592,9 +2593,9 @@ void Web::begin() {
   server.on("/roomSortOrder", []() {
     if(server.method() == HTTP_OPTIONS) { server.send(200, "OK"); return; }
     DynamicJsonDocument doc(512);
-    Serial.print("Plain: ");
-    Serial.print(server.method());
-    Serial.println(server.arg("plain"));
+    DEBUG_PRINT("Plain: ");
+    DEBUG_PRINT(server.method());
+    DEBUG_PRINTLN(server.arg("plain"));
     DeserializationError err = deserializeJson(doc, server.arg("plain"));
     if (err) {
       webServer.handleDeserializationError(server, err);
@@ -2623,9 +2624,9 @@ void Web::begin() {
   server.on("/shadeSortOrder", []() {
     if(server.method() == HTTP_OPTIONS) { server.send(200, "OK"); return; }
     DynamicJsonDocument doc(512);
-    Serial.print("Plain: ");
-    Serial.print(server.method());
-    Serial.println(server.arg("plain"));
+    DEBUG_PRINT("Plain: ");
+    DEBUG_PRINT(server.method());
+    DEBUG_PRINTLN(server.arg("plain"));
     DeserializationError err = deserializeJson(doc, server.arg("plain"));
     if (err) {
       webServer.handleDeserializationError(server, err);
@@ -2654,9 +2655,9 @@ void Web::begin() {
   server.on("/groupSortOrder", []() {
     if(server.method() == HTTP_OPTIONS) { server.send(200, "OK"); return; }
     DynamicJsonDocument doc(512);
-    Serial.print("Plain: ");
-    Serial.print(server.method());
-    Serial.println(server.arg("plain"));
+    DEBUG_PRINT("Plain: ");
+    DEBUG_PRINT(server.method());
+    DEBUG_PRINTLN(server.arg("plain"));
     DeserializationError err = deserializeJson(doc, server.arg("plain"));
     if (err) {
       webServer.handleDeserializationError(server, err);

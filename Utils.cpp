@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <time.h>
+#include "Log.h"
 #include "Utils.h"
 
 
@@ -93,7 +94,7 @@ time_t Timestamp::parseUTCTime(const char *buff) {
     else num[j++] = ch;
   }
   dt.tm_sec = atoi(num);
-  //Serial.printf("Y:%d M:%d D:%d H:%d M:%d S:%d\n", dt.tm_year, dt.tm_mon, dt.tm_mday, dt.tm_hour, dt.tm_min, dt.tm_sec);
+  //DEBUG_PRINTF("Y:%d M:%d D:%d H:%d M:%d S:%d\n", dt.tm_year, dt.tm_mon, dt.tm_mday, dt.tm_hour, dt.tm_min, dt.tm_sec);
   return Timestamp::mkUTCTime(&dt);
 }
 time_t Timestamp::getUTC(time_t t) {

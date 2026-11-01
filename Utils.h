@@ -3,7 +3,6 @@
 #include <Arduino.h>
 
 
-#define DEBUG_SOMFY Serial
 
 
 

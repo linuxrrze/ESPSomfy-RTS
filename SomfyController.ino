@@ -1,6 +1,7 @@
 #include <WiFi.h>
 #include <LittleFS.h>
 #include <esp_task_wdt.h>
+#include "Log.h"
 #include "ConfigSettings.h"
 #include "Network.h"
 #include "Web.h"
@@ -22,15 +23,15 @@ GitUpdater git;
 uint32_t oldheap = 0;
 void setup() {
   Serial.begin(115200);
-  Serial.println();
-  Serial.println("Startup/Boot....");
-  Serial.println("Mounting File System...");
-  if(LittleFS.begin()) Serial.println("File system mounted successfully");
-  else Serial.println("Error mounting file system");
+  LOG_PRINTLN();
+  LOG_PRINTLN("Startup/Boot....");
+  LOG_PRINTLN("Mounting File System...");
+  if(LittleFS.begin()) LOG_PRINTLN("File system mounted successfully");
+  else LOG_PRINTLN("Error mounting file system");
   settings.begin();
   if(WiFi.status() == WL_CONNECTED) WiFi.disconnect(true);
   delay(10);
-  Serial.println();
+  DEBUG_PRINTLN();
   webServer.startup();
   webServer.begin();
   delay(1000);
@@ -46,9 +47,9 @@ void loop() {
   // put your main code here, to run repeatedly:
   //uint32_t heap = ESP.getFreeHeap();
   if(rebootDelay.reboot && millis() > rebootDelay.rebootTime) {
-    Serial.print("Rebooting after ");
-    Serial.print(rebootDelay.rebootTime);
-    Serial.println("ms");
+    DEBUG_PRINT("Rebooting after ");
+    DEBUG_PRINT(rebootDelay.rebootTime);
+    DEBUG_PRINTLN("ms");
     net.end();
     ESP.restart();
     return;
@@ -56,11 +57,11 @@ void loop() {
   uint32_t timing = millis();
   
   net.loop();
-  if(millis() - timing > 100) Serial.printf("Timing Net: %ldms\n", millis() - timing);
+  if(millis() - timing > 100) DEBUG_PRINTF("Timing Net: %ldms\n", millis() - timing);
   timing = millis();
   esp_task_wdt_reset();
   somfy.loop();
-  if(millis() - timing > 100) Serial.printf("Timing Somfy: %ldms\n", millis() - timing);
+  if(millis() - timing > 100) DEBUG_PRINTF("Timing Somfy: %ldms\n", millis() - timing);
   timing = millis();
   esp_task_wdt_reset();
   if(net.connected() || net.softAPOpened) {
@@ -70,11 +71,11 @@ void loop() {
     }
     webServer.loop();
     esp_task_wdt_reset();
-    if(millis() - timing > 100) Serial.printf("Timing WebServer: %ldms\n", millis() - timing);
+    if(millis() - timing > 100) DEBUG_PRINTF("Timing WebServer: %ldms\n", millis() - timing);
     esp_task_wdt_reset();
     timing = millis();
     sockEmit.loop();
-    if(millis() - timing > 100) Serial.printf("Timing Socket: %ldms\n", millis() - timing);
+    if(millis() - timing > 100) DEBUG_PRINTF("Timing Socket: %ldms\n", millis() - timing);
     esp_task_wdt_reset();
     timing = millis();
   }
