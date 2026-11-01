@@ -22,7 +22,8 @@ var errors = [
     { code: -40, desc: "Git Download: Http Error." },
     { code: -41, desc: "Git Download: Buffer Allocation Error." },
     { code: -42, desc: "Git Download: Download Connection Error." },
-    { code: -43, desc: 'Git Download: Timeout Error.' }
+    { code: -43, desc: 'Git Download: Timeout Error.' },
+    { code: -44, desc: 'Git Download: The GitHub server certificate could not be verified.' }
 ]
 document.oncontextmenu = (event) => {
     if (event.target && event.target.tagName.toLowerCase() === 'input' && (event.target.type.toLowerCase() === 'text' || event.target.type.toLowerCase() === 'password'))
@@ -4412,7 +4413,8 @@ class Firmware {
                         let inst = document.getElementById('divGitInstall');
                         if (inst) {
                             inst.remove();
-                            ui.errorMessage(e.desc);
+                            if (rel.error === -44) this.promptInsecureUpdate(() => this.updateGithub(true));
+                            else ui.errorMessage(e.desc);
                         }
                         div.innerHTML = e.desc;
                     }
@@ -4480,7 +4482,7 @@ class Firmware {
 
         let obj = ui.fromElement(div);
         console.log(obj);
-        putJSONSync(`/downloadFirmware?ver=${obj.version}`, {}, (err, ver) => {
+        putJSONSync(`/downloadFirmware?ver=${obj.version}${this.insecureGit ? '&insecure=true' : ''}`, {}, (err, ver) => {
             if (err) ui.serviceError(err);
             else {
                 general.reloadApp = true;
@@ -4504,9 +4506,18 @@ class Firmware {
             div.remove();
         });
     }
-    updateGithub() {
-        getJSONSync('/getReleases', (err, rel) => {
-            if (err) ui.serviceError(err);
+    promptInsecureUpdate(onYes) {
+        ui.promptMessage('The GitHub server certificate could not be verified. This can happen when GitHub moves to a new certificate authority, but also when someone intercepts the connection.<br/><br/>Only continue if you trust your network. Update without verifying the certificate?', () => {
+            ui.clearErrors();
+            onYes();
+        });
+    }
+    updateGithub(insecure) {
+        // Remembered for the install request. Only set after the user accepted an unverified certificate.
+        this.insecureGit = insecure === true;
+        getJSONSync(`/getReleases${this.insecureGit ? '?insecure=true' : ''}`, (err, rel) => {
+            if (err && err.certError) this.promptInsecureUpdate(() => this.updateGithub(true));
+            else if (err) ui.serviceError(err);
             else {
                 console.log(rel);
                 let div = document.createElement('div');

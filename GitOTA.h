@@ -14,6 +14,8 @@
 #define GIT_UPDATE_COMPLETE 4
 #define GIT_UPDATE_CANCELLING 5
 #define GIT_UPDATE_CANCELLED 6
+// The GitHub server certificate could not be verified against the root CAs in CABundle.h.
+#define ERR_CERT_VERIFY -44
 
 class GitRelease {
   public:
@@ -32,7 +34,7 @@ class GitRelease {
 };
 class GitRepo {
   public:
-    int16_t getReleases(uint8_t num = GIT_MAX_RELEASES);
+    int16_t getReleases(uint8_t num = GIT_MAX_RELEASES, bool insecure = false);
     GitRelease releases[GIT_MAX_RELEASES + 1];
     void toJSON(JsonResponse &json);
 };
@@ -51,6 +53,9 @@ class GitUpdater {
     char currentFile[64] = "";
     char baseUrl[128] = "";
     int partition = 0;
+    // Skip the certificate check for the current update. Set when the user chooses to update
+    // although the GitHub certificate could not be verified.
+    bool insecure = false;
     void checkForUpdate();
     bool beginUpdate(const char *release);
     bool endUpdate();

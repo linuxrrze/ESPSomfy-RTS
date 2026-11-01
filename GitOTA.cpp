@@ -3,7 +3,10 @@
 #include <Update.h>
 #include <HTTPClient.h>
 #include <esp_task_wdt.h>
+#include <mbedtls/ssl.h>
+#include <mbedtls/x509.h>
 #include "Log.h"
+#include "CABundle.h"
 #include "ConfigSettings.h"
 #include "GitOTA.h"
 #include "Utils.h"
@@ -26,6 +29,22 @@ extern Network net;
 
 
 #define MAX_BUFF_SIZE 4096
+// Verify the GitHub server certificate against the root CAs in CABundle.h unless the user chose to
+// update without verification.
+static void setTrust(WiFiClientSecure &client, bool insecure) {
+  if(insecure) client.setInsecure();
+  else client.setCACertBundle(ca_bundle);
+}
+// True when the last connection failed because the server certificate could not be verified.
+static bool certFailed(WiFiClientSecure &client) {
+  char msg[64];
+  int err = client.lastError(msg, sizeof(msg));
+  if(err == MBEDTLS_ERR_X509_CERT_VERIFY_FAILED || err == MBEDTLS_ERR_X509_FATAL_ERROR || err == MBEDTLS_ERR_SSL_BAD_HS_CERTIFICATE) {
+    LOG_PRINTF("GitHub certificate could not be verified: %s\n", msg);
+    return true;
+  }
+  return false;
+}
 void GitRelease::setReleaseProperty(const char *key, const char *val) {
   if(strcmp(key, "id") == 0) this->id = atol(val);
   else if(strcmp(key, "draft") == 0) this->draft = toBoolean(val, false);
@@ -91,9 +110,9 @@ void GitRelease::toJSON(JsonResponse &json) {
 }
 #define ERR_CLIENT_OFFSET -50
 
-int16_t GitRepo::getReleases(uint8_t num) {
+int16_t GitRepo::getReleases(uint8_t num, bool insecure) {
   WiFiClientSecure sclient;
-  sclient.setInsecure();
+  setTrust(sclient, insecure);
   sclient.setHandshakeTimeout(3);
   uint8_t ndx = 0;
   uint8_t count = min((uint8_t)GIT_MAX_RELEASES, num);
@@ -225,6 +244,11 @@ int16_t GitRepo::getReleases(uint8_t num) {
         return httpCode;
       }
     }
+    else if(certFailed(sclient)) {
+      https.end();
+      sclient.stop();
+      return ERR_CERT_VERIFY;
+    }
     https.end();  
     sclient.stop();
   }
@@ -353,6 +377,8 @@ int GitUpdater::checkInternet() {
   int err = 500;
   uint32_t t = millis();
   WiFiClientSecure sclient;
+  // This only probes the connection and nothing from the response is used, so it does not need
+  // to verify the certificate. A certificate problem is reported when the releases are fetched.
   sclient.setInsecure();
   sclient.setHandshakeTimeout(3);
   esp_task_wdt_reset();
@@ -448,6 +474,7 @@ bool GitUpdater::beginUpdate(const char *version) {
     rebootDelay.reboot = true;
     rebootDelay.rebootTime = millis() + 500;
   }
+  this->insecure = false;
   this->status = GIT_UPDATE_COMPLETE;
   this->emitUpdateCheck();
   return true;
@@ -474,7 +501,7 @@ bool GitUpdater::endUpdate() { return true; }
 int8_t GitUpdater::downloadFile() {
   DEBUG_PRINTF("Begin update %s\n", this->currentFile);
   WiFiClientSecure sclient;
-  sclient.setInsecure();
+  setTrust(sclient, this->insecure);
   HTTPClient https;
   char url[196];
   sprintf(url, "%s%s", this->baseUrl, this->currentFile);
@@ -579,11 +606,17 @@ int8_t GitUpdater::downloadFile() {
     }        
     else {
       LOG_PRINTF("Invalid HTTP Code: %d\n", httpCode);
+      // Do not report success when nothing was downloaded.
+      int8_t err = certFailed(sclient) ? ERR_CERT_VERIFY : ERR_DOWNLOAD_CONNECTION;
+      https.end();
+      sclient.stop();
+      return err;
     }
     https.end(); 
     sclient.stop(); 
     DEBUG_PRINTF("End update %s\n", this->currentFile);
   }
+  else return ERR_DOWNLOAD_CONNECTION;
   esp_task_wdt_reset();
   return 0;
 }

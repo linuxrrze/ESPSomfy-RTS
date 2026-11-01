@@ -32,6 +32,7 @@ static char g_content[WEB_MAX_RESPONSE];
 
 // General responses
 static const char _response_404[] = "404: Service Not Found";
+static const char _response_cert[] = "{\"status\":\"ERROR\",\"certError\":true,\"desc\":\"The GitHub server certificate could not be verified.\"}";
 
 
 // Encodings
@@ -1060,7 +1061,9 @@ void Web::handleDownloadFirmware(WebServer &server) {
   if(server.method() == HTTP_OPTIONS) { server.send(200, "OK"); return; }
   GitRepo repo;
   GitRelease *rel = nullptr;
-  int8_t err = repo.getReleases();
+  // The user accepted that the GitHub certificate could not be verified.
+  bool insecure = server.hasArg("insecure") && toBoolean(server.arg("insecure").c_str(), false);
+  int8_t err = repo.getReleases(GIT_MAX_RELEASES, insecure);
   DEBUG_PRINTLN("downloadFirmware called...");
   if(err == 0) {
     if(server.hasArg("ver")) {
@@ -1084,6 +1087,7 @@ void Web::handleDownloadFirmware(WebServer &server) {
         resp.endObject();
         resp.endResponse();
         strcpy(git.targetRelease, rel->name);
+        git.insecure = insecure;
         git.status = GIT_AWAITING_UPDATE;
       }
       else
@@ -1092,6 +1096,8 @@ void Web::handleDownloadFirmware(WebServer &server) {
     else
       server.send(500, _encoding_json, F("{\"status\":\"ERROR\",\"desc\":\"Release version not supplied.\"}"));
   }
+  else if(err == ERR_CERT_VERIFY)
+    server.send(500, _encoding_json, _response_cert);
   else {
       server.send(err, _encoding_json, F("{\"status\":\"ERROR\",\"desc\":\"Error communicating with Github.\"}"));
   }
@@ -1185,7 +1191,10 @@ void Web::begin() {
     webServer.sendCORSHeaders(server);
     if(server.method() == HTTP_OPTIONS) { server.send(200, "OK"); return; }
     GitRepo repo;
-    repo.getReleases();
+    if(repo.getReleases(GIT_MAX_RELEASES, server.hasArg("insecure") && toBoolean(server.arg("insecure").c_str(), false)) == ERR_CERT_VERIFY) {
+      server.send(500, _encoding_json, _response_cert);
+      return;
+    }
     git.setCurrentRelease(repo);
     JsonResponse resp;
     resp.beginResponse(&server, g_content, sizeof(g_content));
