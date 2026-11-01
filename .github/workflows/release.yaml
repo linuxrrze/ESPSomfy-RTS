@@ -6,14 +6,14 @@ on:
 
 env:
   ARDUINO_BOARD_MANAGER_ADDITIONAL_URLS: "https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json"
-  ARDUINO_CLI_VERSION: "0.x"
+  ARDUINO_CLI_VERSION: "1.x"
   ARDUINO_ESP32_VERSION: "2.0.17"
   ARDUINO_JSON_VERSION: "6.21.6"
   ESPTOOL_VERSION: "4.7"
   LITTLEFS_VERSION: "v2.5.1"
   MKLITTLEFS_VERSION: "3.1.0"
   PUB_SUB_CLIENT_VERSION: "3.3.2"
-  PYTHON_VERSION: "3.10"
+  PYTHON_VERSION: "3.12"
   SMARTRC_CC1101_VERSION: "2.5.7"
   WEB_SOCKET_VERSION: "2.7.2"
 
@@ -30,17 +30,17 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
 
       - name: Check out code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Checkout mklittlefs
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: earlephilhower/mklittlefs
           path: mklittlefs
           ref: ${{ env.MKLITTLEFS_VERSION }}
 
       - name: Checkout LittleFS
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: littlefs-project/littlefs
           path: mklittlefs/littlefs
@@ -56,7 +56,7 @@ jobs:
           ./mklittlefs/mklittlefs --create build/data --size 1441792 SomfyController.littlefs.bin
 
       - name: Upload binaries
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: LittleFS
           path: SomfyController.littlefs.bin
@@ -121,17 +121,17 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
 
       - name: Check out code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           path: SomfyController
 
       - name: Get LittleFS
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: LittleFS
 
       - name: Install Python ${{ env.PYTHON_VERSION }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
@@ -145,7 +145,7 @@ jobs:
           pip install esptool==${{ env.ESPTOOL_VERSION }}
 
       - name: Install Arduino CLI
-        uses: arduino/setup-arduino-cli@v1
+        uses: arduino/setup-arduino-cli@v2.0.0
         with:
           version: ${{ env.ARDUINO_CLI_VERSION }}
 
@@ -165,6 +165,17 @@ jobs:
         run: |
           mkdir -p build${{ matrix.name }}
           arduino-cli compile --clean --output-dir build${{ matrix.name }} --fqbn ${{ matrix.fqbn }} --warnings none ./SomfyController
+
+      - name: Check ${{ matrix.name }} size
+        run: |
+          # The app partitions of the default partition table are 0x140000 bytes. The partition
+          # table cannot be changed by an OTA update, so the firmware has to fit.
+          size=$(stat -c%s build${{ matrix.name }}/SomfyController.ino.bin)
+          echo "Firmware is $size bytes, $((0x140000 - size)) bytes free in the app partition"
+          if [ "$size" -gt $((0x140000)) ]; then
+            echo "::error::The firmware does not fit the app partition"
+            exit 1
+          fi
 
       - name: ${{ matrix.name }} Image
         run: |

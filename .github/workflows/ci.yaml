@@ -3,15 +3,15 @@ name: ESPSomfy-RTS
 on: [push, pull_request]
 
 env:
-  ARDUINO_BOARD_MANAGER_ADDITIONAL_URLS: "https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_dev_index.json"
-  ARDUINO_CLI_VERSION: "0.x"
-  ARDUINO_ESP32_VERSION: "2.0.10"
+  ARDUINO_BOARD_MANAGER_ADDITIONAL_URLS: "https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json"
+  ARDUINO_CLI_VERSION: "1.x"
+  ARDUINO_ESP32_VERSION: "2.0.17"
   ARDUINO_JSON_VERSION: "6.21.6"
-  ESPTOOL_VERSION: "4.6"
+  ESPTOOL_VERSION: "4.7"
   LITTLEFS_VERSION: "v2.5.1"
   MKLITTLEFS_VERSION: "3.1.0"
   PUB_SUB_CLIENT_VERSION: "3.3.2"
-  PYTHON_VERSION: "3.10"
+  PYTHON_VERSION: "3.12"
   SMARTRC_CC1101_VERSION: "2.5.7"
   WEB_SOCKET_VERSION: "2.7.2"
 
@@ -22,17 +22,17 @@ jobs:
 
     steps:
       - name: Check out code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v7
 
       - name: Checkout mklittlefs
-        uses: actions/checkout@v3
+        uses: actions/checkout@v7
         with:
           repository: earlephilhower/mklittlefs
           path: mklittlefs
           ref: ${{ env.MKLITTLEFS_VERSION }}
 
       - name: Checkout LittleFS
-        uses: actions/checkout@v3
+        uses: actions/checkout@v7
         with:
           repository: littlefs-project/littlefs
           path: mklittlefs/littlefs
@@ -48,7 +48,7 @@ jobs:
           ./mklittlefs/mklittlefs --create build/data --size 1441792 SomfyController.littlefs.bin
 
       - name: Upload binaries
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v7
         with:
           name: LittleFS
           path: SomfyController.littlefs.bin
@@ -66,37 +66,37 @@ jobs:
           - board: esp32
             addr_bootloader: 0x1000
             chip: ESP32
-            fqbn: esp32:esp32:esp32
+            fqbn: esp32:esp32:esp32wrover:PartitionScheme=default,FlashMode=qio,FlashFreq=80,UploadSpeed=921600,DebugLevel=none,EraseFlash=none
             name: ESP32
-          - board: lolin_c3_mini
+          - board: esp32c3
             addr_bootloader: 0x0
             chip: ESP32-C3
-            fqbn: esp32:esp32:lolin_c3_mini
-            name: LOLIN-C3-mini
-          - board: lolin_s2_mini
+            fqbn: esp32:esp32:esp32c3:JTAGAdapter=default,CDCOnBoot=cdc,PartitionScheme=default,CPUFreq=160,FlashMode=qio,FlashFreq=80,FlashSize=4M,UploadSpeed=921600,DebugLevel=none,EraseFlash=none
+            name: ESP32C3
+          - board: esp32s2
             addr_bootloader: 0x1000
             chip: ESP32-S2
-            fqbn: esp32:esp32:lolin_s2_mini
-            name: LOLIN-S2-mini
-          - board: lolin_s3_mini
+            fqbn: esp32:esp32:esp32s2:JTAGAdapter=default,CDCOnBoot=cdc,MSCOnBoot=default,DFUOnBoot=default,UploadMode=default,PSRAM=disabled,PartitionScheme=default,CPUFreq=240,FlashMode=qio,FlashFreq=80,FlashSize=4M,UploadSpeed=921600,DebugLevel=none,EraseFlash=none
+            name: ESP32S2
+          - board: esp32s3
             addr_bootloader: 0x0
             chip: ESP32-S3
-            fqbn: esp32:esp32:lolin_s3_mini
-            name: LOLIN-S3-mini
+            fqbn: esp32:esp32:esp32s3:JTAGAdapter=default,PSRAM=disabled,FlashMode=qio,FlashSize=4M,LoopCore=1,EventsCore=1,USBMode=hwcdc,CDCOnBoot=cdc,MSCOnBoot=default,DFUOnBoot=default,UploadMode=default,PartitionScheme=default,CPUFreq=240,UploadSpeed=921600,DebugLevel=none,EraseFlash=none
+            name: ESP32S3
 
     steps:
       - name: Check out code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v7
         with:
           path: SomfyController
 
       - name: Get LittleFS
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v8
         with:
           name: LittleFS
 
       - name: Install Python ${{ env.PYTHON_VERSION }}
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
@@ -110,7 +110,7 @@ jobs:
           pip install esptool==${{ env.ESPTOOL_VERSION }}
 
       - name: Install Arduino CLI
-        uses: arduino/setup-arduino-cli@v1
+        uses: arduino/setup-arduino-cli@v2.0.0
         with:
           version: ${{ env.ARDUINO_CLI_VERSION }}
 
@@ -131,6 +131,17 @@ jobs:
           mkdir -p build
           arduino-cli compile --clean --output-dir build --fqbn ${{ matrix.fqbn }} --warnings default ./SomfyController
 
+      - name: Check ${{ matrix.name }} size
+        run: |
+          # The app partitions of the default partition table are 0x140000 bytes. The partition
+          # table cannot be changed by an OTA update, so the firmware has to fit.
+          size=$(stat -c%s build/SomfyController.ino.bin)
+          echo "Firmware is $size bytes, $((0x140000 - size)) bytes free in the app partition"
+          if [ "$size" -gt $((0x140000)) ]; then
+            echo "::error::The firmware does not fit the app partition"
+            exit 1
+          fi
+
       - name: ${{ matrix.name }} Image
         run: |
           python -m esptool --chip ${{ matrix.chip }} \
@@ -141,7 +152,7 @@ jobs:
             0x290000 SomfyController.littlefs.bin
 
       - name: Upload ${{ matrix.name }}
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.name }}
           path: |
