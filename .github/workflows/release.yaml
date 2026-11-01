@@ -198,6 +198,19 @@ jobs:
             0x10000 build${{ matrix.name }}/SomfyController.ino.bin \
             0x290000 SomfyController.littlefs.bin
 
+      - name: Keep ${{ matrix.name }} binaries
+        run: |
+          mkdir -p keep
+          cp build${{ matrix.name }}/SomfyController.ino.bin keep/${{ matrix.fwname }}
+          cp ${{ matrix.obname }} keep/
+
+      - name: Hand ${{ matrix.name }} binaries to the publish job
+        uses: actions/upload-artifact@v7
+        with:
+          name: bin-${{ matrix.name }}
+          path: keep/
+          retention-days: 5
+
       - name: Upload Firmware ${{ matrix.name }}
         uses: shogo82148/actions-upload-release-asset@v1.7.5
         with:
@@ -222,3 +235,74 @@ jobs:
           overwrite: true
           asset_content_type: application/zip
           
+
+  publish:
+    # Commits the release binaries to the root of main, where the Main update channel downloads
+    # them, and publishes the web installer to the gh-pages branch.
+    name: Publish
+    needs: [littlefs, arduino]
+    if: ${{ !github.event.release.prerelease }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Get binaries
+        uses: actions/download-artifact@v8
+        with:
+          pattern: bin-*
+          merge-multiple: true
+          path: bins
+
+      - name: Get LittleFS
+        uses: actions/download-artifact@v8
+        with:
+          name: LittleFS
+          path: bins
+
+      - name: Commit the binaries to main
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+          BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          cp bins/SomfyController.ino.*.bin bins/SomfyController.littlefs.bin .
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add SomfyController.ino.*.bin SomfyController.littlefs.bin
+          if git diff --cached --quiet; then
+            echo "The binaries are already up to date"
+            exit 0
+          fi
+          git commit -m "Update the committed binaries to $TAG"
+          # Someone may push to main while the release builds.
+          for i in 1 2 3; do
+            git push origin "HEAD:$BRANCH" && exit 0
+            git pull --rebase origin "$BRANCH"
+          done
+          exit 1
+
+      - name: Build the web installer
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          ./tools/make-webinstall.sh "${TAG#v}" bins site
+
+      - name: Publish the web installer
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+          REPO: ${{ github.repository }}
+          TOKEN: ${{ github.token }}
+        run: |
+          # One commit without history, so old firmware images do not pile up in the repository.
+          cd site
+          git init -q -b gh-pages
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Web installer for $TAG"
+          git push -f "https://x-access-token:$TOKEN@github.com/$REPO.git" gh-pages

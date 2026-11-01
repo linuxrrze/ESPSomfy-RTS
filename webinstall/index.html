@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ESPSomfy RTS Installer</title>
+  <script type="module" src="https://unpkg.com/esp-web-tools@10.4.0/dist/web/install-button.js?module"></script>
+  <style>
+    :root {
+      --bg: #f6f7f9; --fg: #1d2330; --muted: #5b6475; --card: #ffffff; --border: #dfe3ea;
+      --accent: #2f6fd6; --accent-fg: #ffffff; --warn-bg: #fff4e0; --warn-border: #f0b44c;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        --bg: #14171d; --fg: #e6e9ef; --muted: #9aa3b2; --card: #1d2129; --border: #2e3440;
+        --accent: #5b93ef; --accent-fg: #0d1117; --warn-bg: #2d2412; --warn-border: #a4772a;
+      }
+    }
+    body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.5 system-ui, sans-serif; }
+    main { max-width: 760px; margin: 0 auto; padding: 32px 16px 48px; }
+    h1 { font-size: 1.6rem; margin: 0 0 4px; }
+    h2 { font-size: 1.15rem; margin: 0 0 8px; }
+    p { margin: 0 0 12px; }
+    .muted { color: var(--muted); }
+    section { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 20px; margin-top: 20px; }
+    .warn { background: var(--warn-bg); border-left: 4px solid var(--warn-border); border-radius: 6px; padding: 10px 12px; margin: 12px 0; }
+    button.install { background: var(--accent); color: var(--accent-fg); border: 0; border-radius: 6px; padding: 10px 18px; font: inherit; font-weight: 600; cursor: pointer; }
+    code { font-size: 0.9em; }
+    a { color: var(--accent); }
+  </style>
+</head>
+<body>
+<main>
+  <h1>ESPSomfy RTS Installer</h1>
+  <p class="muted">Version @VERSION@ for ESP32, ESP32-S2, ESP32-S3 and ESP32-C3. The installer picks the right image for the connected chip.</p>
+
+  <section>
+    <h2>Controller already running ESPSomfy RTS?</h2>
+    <p>You don't need this page. Update through the controller's web UI under System → Firmware, which keeps your configuration. See <a href="https://github.com/linuxrrze/ESPSomfy-RTS#installing-and-flashing">Installing and flashing</a>.</p>
+  </section>
+
+  <section>
+    <h2>New installation</h2>
+    <p>Connect the board over USB and press the button. Your browser asks for the serial port.</p>
+    <div class="warn">This writes the complete image and erases everything on the board: Wi-Fi, settings, shades and pairings.</div>
+    <esp-web-install-button manifest="manifest-install.json">
+      <button class="install" slot="activate">Install ESPSomfy RTS @VERSION@</button>
+      <span slot="unsupported">This browser can't access serial ports. Use Chrome or Edge on a desktop computer.</span>
+      <span slot="not-allowed">Serial access needs HTTPS.</span>
+    </esp-web-install-button>
+    <p class="muted" style="margin-top:12px">After installing, join the controller's own Wi-Fi access point to set it up.</p>
+  </section>
+
+  <section>
+    <h2>Repair a board that no longer boots</h2>
+    <p>For a board that shows <code>flash read err, 1000</code> or <code>invalid header</code> after a flash went wrong, for example after <code>SomfyController.ino.*.bin</code> was written to address <code>0x0</code>. This writes the bootloader, the partition table and the firmware, and leaves the file system with your shades, rooms and groups alone.</p>
+    <div class="warn">Wi-Fi and settings may have to be entered again. Afterwards, upload <code>SomfyController.littlefs.bin</code> under System → Firmware → Update Application to update the web UI.</div>
+    <esp-web-install-button manifest="manifest-repair.json">
+      <button class="install" slot="activate">Repair with firmware @VERSION@</button>
+      <span slot="unsupported">This browser can't access serial ports. Use Chrome or Edge on a desktop computer.</span>
+      <span slot="not-allowed">Serial access needs HTTPS.</span>
+    </esp-web-install-button>
+    <p class="muted" style="margin-top:12px">If the installer asks whether to erase the device, say no, or the shades are lost.</p>
+  </section>
+
+  <p class="muted" style="margin-top:24px">Files: <a href="https://github.com/linuxrrze/ESPSomfy-RTS/releases/tag/v@VERSION@">release v@VERSION@</a> · Source: <a href="https://github.com/linuxrrze/ESPSomfy-RTS">linuxrrze/ESPSomfy-RTS</a></p>
+</main>
+</body>
+</html>
