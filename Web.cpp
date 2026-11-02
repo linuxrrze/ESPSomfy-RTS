@@ -1001,7 +1001,8 @@ void Web::begin() {
   onRoute(server, "/setPositions", []() { webServer.handleSetPositions(server); });
   onRoute(server, "/setSensor", []() { webServer.handleSetSensor(server); });
   onRoute(server, "/upnp.xml", []() { SSDP.schema(server.client()); });
-  onRoute(server, "/", []() { webServer.handleStreamFile(server, "/index.html", _encoding_html); });
+  // index.html names the scripts and styles by version, so it must never come from the cache.
+  onRoute(server, "/", []() { server.sendHeader(F("Cache-Control"), F("no-cache")); webServer.handleStreamFile(server, "/index.html", _encoding_html); });
   onRoute(server, "/login", []() { webServer.handleLogin(server); });
   onRoute(server, "/loginContext", []() { webServer.handleLoginContext(server); });
   onRoute(server, "/getReleases", []() {
