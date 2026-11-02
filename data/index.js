@@ -4648,7 +4648,7 @@ class Firmware {
                 }
                 html += `</select><label for="selVersion">Select a version</label></div>`;
                 html += `<div id="divInstalledNote" style="display:none;font-size:.8em;text-align:center;margin-top:-10px;margin-bottom:10px;"></div>`;
-                html += `<div class="button-container" id="divReleaseNotes" style="text-align:center;margin-top:-20px;display:none;"><button type="button" onclick="firmware.showReleaseNotes(document.getElementById('selVersion').value);" style="display:inline-block;width:auto;padding-left:20px;padding-right:20px;">Release Notes</button></div>`;
+                html += `<div class="button-container" id="divReleaseNotes" style="text-align:center;margin-top:-20px;display:none;"><button type="button" onclick="firmware.showReleaseNotes(document.getElementById('selVersion').value);" style="display:inline-block;width:auto;padding-left:20px;padding-right:20px;">Release Notes on GitHub</button></div>`;
                 if (this.isMobile()) {
                     html += `<div style="width:100%;color:red;text-align:center;font-weight:bold;"><span style="margin-top:7px;width:100%;background:yellow;padding:3px;display:inline-block;border-radius:5px;background:white;">WARNING<span></div>`;
                     html += '<hr/><div style="font-size:14px;margin-bottom:10px;">This browser does not support automatic backups.  It is highly recommended that you back up your configuration using the backup button before proceeding.</div>';
@@ -4720,90 +4720,9 @@ class Firmware {
         note.innerText = text;
         note.style.display = text ? '' : 'none';
     }
-    async getReleaseInfo(tag) {
-        let overlay = ui.waitMessage(document.getElementById('divContainer'));
-        try {
-            let ret = {};
-            ret.resp = await fetch(`https://api.github.com/repos/linuxrrze/ESPSomfy-RTS/releases/tags/${tag}`);
-            if (ret.resp.ok)
-                ret.info = await ret.resp.json();
-            return ret;
-        }
-        catch (err) {
-            return { err: err };
-        }
-        finally { overlay.remove(); }
-    }
-    async showReleaseNotes(tagName) {
-        console.log(tagName);
-        let r = await this.getReleaseInfo(tagName);
-        console.log(r);
-        let fnToItem = (txt, tag) => {  }
-        if (r.resp.ok) {
-            // Convert this to html.
-            let lines = r.info.body.split('\r\n');
-            let ctx = { html: '', llvl: 0, lines: r.info.body.split('\r\n'), ndx: 0 };
-            ctx.toHead = function (txt) {
-                let num = txt.indexOf(' ');
-                return `<h${num}>${txt.substring(num).trim()}</h${num}>`;
-            };
-            ctx.toUL = function () {
-                let txt = this.lines[this.ndx++];
-                let tok = this.token(txt);
-                this.html += `<ul>${this.toLI(tok.txt)}`;
-                while (this.ndx < this.lines.length) {
-                    txt = this.lines[this.ndx];
-                    let t = this.token(txt);
-                    if (t.ch === '*') {
-                        if (t.indent !== tok.indent) this.toUL();
-                        else {
-                            this.html += this.toLI(t.txt);
-                            this.ndx++;
-                        }
-                    }
-                    else break;
-                }
-                this.html += '</ul>';
-            };
-            ctx.toLI = function (txt) { return `<li>${txt.trim()}</li>`; }
-            ctx.token = function (txt) {
-                let tok = { ch: '', indent: 0, txt:'' }
-                for (let i = 0; i < txt.length; i++) {
-                    if (txt[i] === ' ') tok.indent++;
-                    else {
-                        tok.ch = txt[i];
-                        let tmp = txt.substring(tok.indent);
-                        tok.txt = tmp.substring(tmp.indexOf(' '));
-                        break;
-                    }
-                }
-                return tok;
-            };
-            ctx.next = function () {
-                if (this.ndx >= this.lines.length) return false;
-                let tok = this.token(this.lines[this.ndx]);
-                switch (tok.ch) {
-                    case '#':
-                        this.html += this.toHead(this.lines[this.ndx]);
-                        this.ndx++;
-                        break;
-                    case '*':
-                        this.toUL();
-                        break;
-                    case '':
-                        this.ndx++;
-                        this.html += `<br/><div>${tok.txt}</div>`;
-                        break;
-                    default:
-                        this.ndx++;
-                        break;
-                }
-                return true;
-            };
-            while (ctx.next());
-            console.log(ctx);
-            ui.infoMessage(ctx.html);
-        }
+    // GitHub renders the release notes far better than the dialog could, so open them there.
+    showReleaseNotes(tagName) {
+        window.open(`https://github.com/linuxrrze/ESPSomfy-RTS/releases/tag/${encodeURIComponent(tagName)}`, '_blank', 'noopener');
     }
     updateFirmware() {
         let div = this.createFileUploader('/updateFirmware');
