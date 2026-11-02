@@ -11,6 +11,13 @@ enum class conn_types_t : byte {
     ethernetpref = 0x03,
     ap = 0x04
 };
+// Only the ESP32 has the Ethernet controller a wired connection needs. On the S2, S3 and C3,
+// starting Ethernet always fails, which leaves the controller without a network.
+#if CONFIG_ETH_USE_ESP32_EMAC
+#define ETHERNET_SUPPORTED true
+#else
+#define ETHERNET_SUPPORTED false
+#endif
 
 enum DeviceStatus {
   DS_OK = 0,

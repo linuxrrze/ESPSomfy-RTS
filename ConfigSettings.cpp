@@ -221,6 +221,10 @@ bool ConfigSettings::load() {
     pref.end();
     this->save();    
   }
+  if(!ETHERNET_SUPPORTED && (this->connType == conn_types_t::ethernet || this->connType == conn_types_t::ethernetpref)) {
+    LOG_PRINTLN("This chip has no Ethernet controller, using WiFi instead");
+    this->connType = conn_types_t::wifi;
+  }
   return true;
 }
 bool ConfigSettings::getAppVersion() {
@@ -260,6 +264,7 @@ void ConfigSettings::toJSON(JsonResponse &json) {
   json.addElem("chipModel", this->chipModel);
   json.addElem("checkForUpdate", this->checkForUpdate);
   json.addElem("autoUpdate", this->autoUpdate);
+  json.addElem("ethernetSupported", ETHERNET_SUPPORTED);
 }
 
 bool ConfigSettings::requiresAuth() { return this->Security.type != security_types::None; }

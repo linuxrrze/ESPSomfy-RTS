@@ -2005,8 +2005,10 @@ void Web::begin() {
       if (method == HTTP_POST || method == HTTP_PUT) {
         // Parse out all the inputs.
         bool reboot = false;
-        if(obj.containsKey("connType") && obj["connType"].as<uint8_t>() != static_cast<uint8_t>(settings.connType)) {
-          settings.connType = static_cast<conn_types_t>(obj["connType"].as<uint8_t>());
+        conn_types_t connType = obj.containsKey("connType") ? static_cast<conn_types_t>(obj["connType"].as<uint8_t>()) : settings.connType;
+        if(!ETHERNET_SUPPORTED && (connType == conn_types_t::ethernet || connType == conn_types_t::ethernetpref)) connType = conn_types_t::wifi;
+        if(connType != settings.connType) {
+          settings.connType = connType;
           settings.save();
           reboot = true;
         }

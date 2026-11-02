@@ -1613,7 +1613,7 @@ class Wifi {
     { val: 1, label: 'WT32-ETH01 - Wireless Tag', clk: 0, ct: 0, addr: 1, pwr: 16, mdc: 23, mdio: 18 }
     ];
     ethClockModes = [{ val: 0, label: 'GPIO0 IN' }, { val: 1, label: 'GPIO0 OUT' }, { val: 2, label: 'GPIO16 OUT' }, { val: 3, label: 'GPIO17 OUT' }];
-    ethPhyTypes = [{ val: 0, label: 'LAN8720' }, { val: 1, label: 'TLK110' }, { val: 2, label: 'RTL8201' }, { val: 3, label: 'DP83848' }, { val: 4, label: 'DM9051' }, { val: 5, label: 'KZ8081' }];
+    ethPhyTypes = [{ val: 0, label: 'LAN8720' }, { val: 1, label: 'TLK110' }, { val: 2, label: 'RTL8201' }, { val: 3, label: 'DP83848' }, { val: 5, label: 'KZ8081' }];
     init() {
         document.getElementById("divNetworkStrength").innerHTML = this.displaySignal(-100);
         if (this.initialized) return;
@@ -1674,8 +1674,11 @@ class Wifi {
                 ui.serviceError(err);
             }
             else {
-                document.getElementById('cbHardwired').checked = settings.connType >= 2;
-                document.getElementById('cbFallbackWireless').checked = settings.connType === 3;
+                // Only the ESP32 has an Ethernet controller, not the S2, S3 or C3.
+                let ethernet = settings.ethernetSupported !== false;
+                document.getElementById('divUseEthernet').style.display = ethernet ? '' : 'none';
+                document.getElementById('cbHardwired').checked = ethernet && settings.connType >= 2;
+                document.getElementById('cbFallbackWireless').checked = ethernet && settings.connType === 3;
                 ui.toElement(pnl, settings);
                 /*
                 if (settings.connType >= 2) {
