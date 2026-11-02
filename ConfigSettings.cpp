@@ -206,6 +206,7 @@ bool ConfigSettings::load() {
   pref.getString("hostname", this->hostname, sizeof(this->hostname));
   this->ssdpBroadcast = pref.getBool("ssdpBroadcast", true);
   this->checkForUpdate = pref.getBool("checkForUpdate", true);
+  this->autoUpdate = pref.getBool("autoUpdate", false);
   this->connType = static_cast<conn_types_t>(pref.getChar("connType", 0x00));
   //DEBUG_PRINTF("Preference GFG Free Entries: %d\n", pref.freeEntries());
   pref.end();
@@ -239,6 +240,7 @@ bool ConfigSettings::save() {
   pref.putBool("ssdpBroadcast", this->ssdpBroadcast);
   pref.putChar("connType", static_cast<uint8_t>(this->connType));
   pref.putBool("checkForUpdate", this->checkForUpdate);
+  pref.putBool("autoUpdate", this->autoUpdate);
   pref.end();
   return true;
 }
@@ -248,6 +250,7 @@ bool ConfigSettings::toJSON(JsonObject &obj) {
   obj["connType"] = static_cast<uint8_t>(this->connType);
   obj["chipModel"] = this->chipModel;
   obj["checkForUpdate"] = this->checkForUpdate;
+  obj["autoUpdate"] = this->autoUpdate;
   return true;
 }
 void ConfigSettings::toJSON(JsonResponse &json) {
@@ -256,6 +259,7 @@ void ConfigSettings::toJSON(JsonResponse &json) {
   json.addElem("connType", static_cast<uint8_t>(this->connType));
   json.addElem("chipModel", this->chipModel);
   json.addElem("checkForUpdate", this->checkForUpdate);
+  json.addElem("autoUpdate", this->autoUpdate);
 }
 
 bool ConfigSettings::requiresAuth() { return this->Security.type != security_types::None; }
@@ -264,6 +268,7 @@ bool ConfigSettings::fromJSON(JsonObject &obj) {
     if(obj.containsKey("hostname")) this->parseValueString(obj, "hostname", this->hostname, sizeof(this->hostname));
     if(obj.containsKey("connType")) this->connType = static_cast<conn_types_t>(obj["connType"].as<uint8_t>());
     if(obj.containsKey("checkForUpdate")) this->checkForUpdate = obj["checkForUpdate"];
+    if(obj.containsKey("autoUpdate")) this->autoUpdate = obj["autoUpdate"];
     return true;
 }
 void ConfigSettings::print() {

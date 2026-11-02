@@ -164,6 +164,11 @@
                             <input id="cbCheckForUpdate" type="checkbox" data-bind="general.checkForUpdate" style="display:inline-block;" />
                             <label for="cbCheckForUpdate" style="display:inline-block;cursor:pointer;">Auto Check for Updates</label>
                         </div>
+                        <div class="field-group" style="margin-top:-12px;">
+                            <input id="cbAutoUpdate" type="checkbox" data-bind="general.autoUpdate" style="display:inline-block;" />
+                            <label for="cbAutoUpdate" style="display:inline-block;cursor:pointer;">Install Updates Automatically</label>
+                            <div style="font-size:12px;">A newer release is installed between 3:00 and 4:00 local time. Shades don't respond while it installs, which takes a few minutes.</div>
+                        </div>
                         <div class="button-container">
                             <button id="btnSaveGeneral" type="button" onclick="general.setGeneral();">
                                 Save
@@ -236,6 +241,10 @@
                                 <span style="text-align:right;display:inline-block;color:#00bcd4;width:127px;">Application:</span>
                                 <span id="spanAppVersion" style="padding-left:4px;display:inline-block;text-align:left;width:120px;">v-.--</span>
                             </div>
+                            <div style="font-size:17px;">
+                                <span style="text-align:right;display:inline-block;color:#00bcd4;width:127px;">Latest:</span>
+                                <span id="spanLatestVersion" style="padding-left:4px;display:inline-block;text-align:left;">-</span>
+                            </div>
                         </div>
                         <div style="display:inline-block;font-size:12px;padding-top:10px;padding-left:37px;">
                             <div style="color: #00bcd4;">Memory (bytes)</div>
@@ -247,6 +256,14 @@
                                 <span style="text-align:right;display:inline-block;color:#00bcd4;">Min: </span>
                                 <span id="spanMinMemory" style="text-align:right;width:120px;"></span>
                             </div>
+                        </div>
+                        <div class="button-container" style="text-align:center;">
+                            <button id="btnCheckUpdate" style="width:47%;display:inline-block;" type="button" onclick="firmware.checkForUpdate();">
+                                Check Now
+                            </button>
+                            <button id="btnInstallLatest" style="width:47%;display:none;" type="button" onclick="firmware.installLatest();">
+                                Install Latest
+                            </button>
                         </div>
                         <div class="button-container">
                             <button id="btnUpdateGithub" type="button" onclick="firmware.updateGithub();">

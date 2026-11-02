@@ -4469,8 +4469,36 @@ class Firmware {
 
     }
 
+    // The latest release on the firmware page, and a button to install it when it is newer.
+    setLatest(rel) {
+        this.latest = rel.latest;
+        let span = document.getElementById('spanLatestVersion');
+        let btn = document.getElementById('btnInstallLatest');
+        if (!span || !btn) return;
+        let text;
+        if (rel.status === 1) text = 'Checking...';
+        else if (!rel.checked) text = 'Not checked yet';
+        else if (!rel.latest || !rel.latest.name) text = `Check failed (error ${rel.error})`;
+        else if (rel.available) text = `${rel.latest.name} available${rel.autoUpdate ? ', installs between 3:00 and 4:00' : ''}`;
+        else text = `${rel.latest.name}, up to date`;
+        span.innerText = text;
+        span.style.color = rel.available ? 'red' : '';
+        btn.innerText = rel.available ? `Install ${rel.latest.name}` : 'Install Latest';
+        btn.style.display = rel.available && rel.status === 0 ? 'inline-block' : 'none';
+    }
+    checkForUpdate() {
+        document.getElementById('spanLatestVersion').innerText = 'Checking...';
+        putJSONSync('/checkForUpdate', {}, (err, rel) => {
+            if (err) ui.serviceError(err);
+            else this.setLatest(rel);
+        });
+    }
+    installLatest() {
+        if (this.latest && this.latest.name) this.updateGithub(false, this.latest.name);
+    }
     procFwStatus(rel) {
         console.log(rel);
+        this.setLatest(rel);
         let div = document.getElementById('divFirmwareUpdate');
         if (rel.available && rel.status === 0 && rel.checkForUpdate !== false) {
             div.style.color = 'black';
@@ -4590,11 +4618,12 @@ class Firmware {
             onYes();
         });
     }
-    updateGithub(insecure) {
+    // version preselects that release in the dialog.
+    updateGithub(insecure, version) {
         // Remembered for the install request. Only set after the user accepted an unverified certificate.
         this.insecureGit = insecure === true;
         getJSONSync(`/getReleases${this.insecureGit ? '?insecure=true' : ''}`, (err, rel) => {
-            if (err && err.certError) this.promptInsecureUpdate(() => this.updateGithub(true));
+            if (err && err.certError) this.promptInsecureUpdate(() => this.updateGithub(true, version));
             else if (err) ui.serviceError(err);
             else {
                 console.log(rel);
@@ -4638,6 +4667,8 @@ class Firmware {
 
                 div.innerHTML = html;
                 document.getElementById('divContainer').appendChild(div);
+                let sel = div.querySelector('#selVersion');
+                if (version && [...sel.options].some(x => x.value === version)) sel.value = version;
                 this.gitReleaseSelected(div);
             }
         });

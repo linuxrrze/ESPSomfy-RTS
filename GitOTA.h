@@ -55,6 +55,8 @@ class GitUpdater {
     appver_t latest;
     bool cancelled = false;
     int16_t error = 0;
+    // When the last automatic install was started, to try a failed one again a day later.
+    uint32_t autoUpdateTime = 0;
     char targetRelease[32];
     char currentFile[64] = "";
     char baseUrl[128] = "";
@@ -63,6 +65,7 @@ class GitUpdater {
     // although the GitHub certificate could not be verified.
     bool insecure = false;
     void checkForUpdate();
+    bool autoUpdateDue();
     bool beginUpdate(const char *release);
     bool endUpdate();
     int8_t downloadFile();

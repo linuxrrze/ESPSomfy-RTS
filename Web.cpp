@@ -1020,6 +1020,11 @@ void Web::begin() {
     git.setCurrentRelease(repo);
     sendJson(server, [](JsonResponse &resp, void *item) { static_cast<GitRepo *>(item)->toJSON(resp); }, &repo);
   });
+  onRoute(server, "/checkForUpdate", []() {
+    // The result also goes out to every browser as a fwStatus event.
+    git.checkForUpdate();
+    sendJson(server, [](JsonResponse &resp, void *) { git.toJSON(resp); });
+  });
   onRoute(server, "/downloadFirmware", []() { webServer.handleDownloadFirmware(server); });
   onRoute(server, "/cancelFirmware", []() {
     // If we are currently downloading the filesystem we cannot cancel.
@@ -1966,11 +1971,12 @@ void Web::begin() {
       HTTPMethod method = server.method();
       if (method == HTTP_POST || method == HTTP_PUT) {
         // Parse out all the inputs.
-        if (obj.containsKey("hostname") || obj.containsKey("ssdpBroadcast") || obj.containsKey("checkForUpdate")) {
+        if (obj.containsKey("hostname") || obj.containsKey("ssdpBroadcast") || obj.containsKey("checkForUpdate") || obj.containsKey("autoUpdate")) {
           bool checkForUpdate = settings.checkForUpdate;
+          bool autoUpdate = settings.autoUpdate;
           settings.fromJSON(obj);
           settings.save();
-          if(settings.checkForUpdate != checkForUpdate) git.emitUpdateCheck();
+          if(settings.checkForUpdate != checkForUpdate || settings.autoUpdate != autoUpdate) git.emitUpdateCheck();
           if(obj.containsKey("hostname")) net.updateHostname();
         }
         if (obj.containsKey("ntpServer") || obj.containsKey("ntpServer")) {

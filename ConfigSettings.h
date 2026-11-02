@@ -192,6 +192,8 @@ class ConfigSettings: BaseSettings {
     appver_t appVersion;
     bool ssdpBroadcast = true;
     bool checkForUpdate = true;
+    // Install a newer release by itself, see GitUpdater::autoUpdateDue.
+    bool autoUpdate = false;
     uint8_t status;
     IPSettings IP;
     WifiSettings WIFI;

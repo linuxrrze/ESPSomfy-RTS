@@ -2,6 +2,7 @@
 #include <WiFiClientSecure.h>
 #include <Update.h>
 #include <HTTPClient.h>
+#include <Preferences.h>
 #include <memory>
 #include <new>
 #include <esp_task_wdt.h>
@@ -29,6 +30,7 @@ extern rebootDelay_t rebootDelay;
 extern Web webServer;
 extern Network net;
 extern MQTTClass mqtt;
+extern Preferences pref;
 
 
 
@@ -313,16 +315,31 @@ void GitRepo::toJSON(JsonResponse &json) {
 void GitUpdater::loop() {
   if(!net.connected()) return;
   if(this->status == GIT_STATUS_READY) {
-    if(settings.checkForUpdate && 
+    if((settings.checkForUpdate || settings.autoUpdate) && 
       (millis() - net.connectTime > 60000) && // Wait a minute before checking after connection.
       (millis() - this->lastCheck > 86400000 || this->lastCheck == 0) && !rebootDelay.reboot) { // 1 day
       this->checkForUpdate();
+    }
+    else if(settings.autoUpdate && this->updateAvailable && !rebootDelay.reboot && this->autoUpdateDue()) {
+      LOG_PRINTF("Installing %s automatically\n", this->latest.name);
+      this->autoUpdateTime = millis();
+      pref.begin("GIT");
+      pref.putString("autoVer", this->latest.name);
+      pref.end();
+      strlcpy(this->targetRelease, this->latest.name, sizeof(this->targetRelease));
+      this->status = GIT_AWAITING_UPDATE;
     }
   }
   else if(this->status == GIT_AWAITING_UPDATE) {
     DEBUG_PRINTLN("Starting update process.........");
     this->status = GIT_UPDATING;
     this->beginUpdate(this->targetRelease);
+    // The update failed before anything was written, so a later automatic install may try it again.
+    if(!rebootDelay.reboot) {
+      pref.begin("GIT");
+      pref.remove("autoVer");
+      pref.end();
+    }
     this->status = GIT_STATUS_READY;
     this->emitUpdateCheck();
   }
@@ -335,6 +352,28 @@ void GitUpdater::loop() {
     }
   }
 }
+// An automatic install starts between 3:00 and 4:00 local time, when the shades are least likely
+// to be needed, and at most once a day so a failing one is not repeated over and over. Without the
+// time from NTP it starts right away. A version that was installed automatically before is not
+// installed again, in case a release reports a wrong version and would be installed after every boot.
+bool GitUpdater::autoUpdateDue() {
+  // This runs on every pass of the loop, so only look once a minute.
+  static uint32_t lastLook = 0;
+  if(lastLook != 0 && millis() - lastLook < 60000) return false;
+  lastLook = millis();
+  if(this->autoUpdateTime != 0 && millis() - this->autoUpdateTime < 82800000) return false; // 23 hours
+  time_t now = time(nullptr);
+  if(now >= 1700000000) {
+    struct tm dt;
+    localtime_r(&now, &dt);
+    if(dt.tm_hour != 3) return false;
+  }
+  char tried[sizeof(this->latest.name)] = "";
+  pref.begin("GIT");
+  pref.getString("autoVer", tried, sizeof(tried));
+  pref.end();
+  return strcmp(tried, this->latest.name) != 0;
+}
 void GitUpdater::checkForUpdate() {
   if(this->status != 0) return; // If we are already checking.
   DEBUG_PRINTLN("Check github for updates...");
@@ -345,7 +384,8 @@ void GitUpdater::checkForUpdate() {
   this->lastCheck = millis();
   // Keep the release list off the stack, the TLS connection below needs it.
   std::unique_ptr<GitRepo> prepo(new (std::nothrow) GitRepo);
-  if(prepo && this->checkInternet() == 0) {
+  if(!prepo) this->error = -1;
+  else if((this->error = this->checkInternet()) == 0) {
     GitRepo &repo = *prepo;
     this->updateAvailable = false;
     this->error = repo.getReleases(2);
@@ -378,6 +418,8 @@ void GitUpdater::toJSON(JsonResponse &json) {
   json.addElem("error", (int32_t)this->error);
   json.addElem("cancelled", this->cancelled);
   json.addElem("checkForUpdate", settings.checkForUpdate);
+  json.addElem("autoUpdate", settings.autoUpdate);
+  json.addElem("checked", this->lastCheck != 0);
   json.addElem("inetAvailable", this->inetAvailable);
   json.beginObject("fwVersion");
   settings.fwVersion.toJSON(json);
@@ -397,6 +439,8 @@ void GitUpdater::emitUpdateCheck(uint8_t num) {
   json->addElem("error", (int32_t)this->error);
   json->addElem("cancelled", this->cancelled);
   json->addElem("checkForUpdate", settings.checkForUpdate);
+  json->addElem("autoUpdate", settings.autoUpdate);
+  json->addElem("checked", this->lastCheck != 0);
   json->addElem("inetAvailable", this->inetAvailable);
   json->beginObject("fwVersion");
   settings.fwVersion.toJSON(json);
