@@ -260,6 +260,7 @@ int16_t GitRepo::getReleases(uint8_t num, bool insecure) {
         }
       }
       else {
+        LOG_PRINTF("GitHub release list request failed with HTTP %d\n", httpCode);
         https.end();
         sclient.stop();
         return httpCode;
@@ -270,9 +271,20 @@ int16_t GitRepo::getReleases(uint8_t num, bool insecure) {
       sclient.stop();
       return ERR_CERT_VERIFY;
     }
+    else {
+      LOG_PRINTF("GitHub release list request failed: %s\n", HTTPClient::errorToString(httpCode).c_str());
+      https.end();
+      sclient.stop();
+      return httpCode;
+    }
     https.end();  
     sclient.stop();
   }
+  else {
+    LOG_PRINTLN("GitHub release list request could not be started");
+    return HTTPC_ERROR_CONNECTION_REFUSED;
+  }
+  LOG_PRINTF("Found %u releases on GitHub\n", ndx);
   settings.printAvailHeap();
   return 0;
 }
@@ -283,6 +295,7 @@ void GitRepo::toJSON(JsonResponse &json) {
   json.beginObject("appVersion");
   settings.appVersion.toJSON(json);
   json.endObject();
+  json.addElem("error", (int32_t)this->error);
   json.beginArray("releases");
   for(uint8_t i = 0; i < GIT_MAX_RELEASES + 1; i++) {
     if(this->releases[i].id == 0) continue;

@@ -40,6 +40,8 @@ class GitRepo {
   public:
     int16_t getReleases(uint8_t num = GIT_MAX_RELEASES, bool insecure = false);
     GitRelease releases[GIT_MAX_RELEASES + 1];
+    // The result of getReleases, sent along so the web UI can say why only Main is listed.
+    int16_t error = 0;
     void toJSON(JsonResponse &json);
 };
 class GitUpdater {

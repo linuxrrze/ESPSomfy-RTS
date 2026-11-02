@@ -881,9 +881,11 @@ void Web::handleDownloadFirmware(WebServer &server) {
   GitRelease *rel = nullptr;
   // The user accepted that the GitHub certificate could not be verified.
   bool insecure = server.hasArg("insecure") && toBoolean(server.arg("insecure").c_str(), false);
-  int8_t err = repo.getReleases(GIT_MAX_RELEASES, insecure);
+  int16_t err = repo.getReleases(GIT_MAX_RELEASES, insecure);
   DEBUG_PRINTLN("downloadFirmware called...");
-  if(err == 0) {
+  // Main is always in the list, so it can be installed even when the GitHub release list could not be read.
+  bool main = server.hasArg("ver") && strcmp(server.arg("ver").c_str(), "main") == 0;
+  if(err == 0 || (main && err != ERR_CERT_VERIFY)) {
     if(server.hasArg("ver")) {
       if(strcmp(server.arg("ver").c_str(), "latest") == 0) rel = &repo.releases[0];
       else if(strcmp(server.arg("ver").c_str(), "main") == 0) {
@@ -912,7 +914,7 @@ void Web::handleDownloadFirmware(WebServer &server) {
   else if(err == ERR_CERT_VERIFY)
     server.send(500, _encoding_json, _response_cert);
   else {
-      sendError(server, err, "Error communicating with Github.");
+      sendError(server, 500, "Error communicating with Github.");
   }
 }
 void Web::handleNotFound(WebServer &server) {
@@ -1010,7 +1012,8 @@ void Web::begin() {
       return;
     }
     GitRepo &repo = *prepo;
-    if(repo.getReleases(GIT_MAX_RELEASES, server.hasArg("insecure") && toBoolean(server.arg("insecure").c_str(), false)) == ERR_CERT_VERIFY) {
+    repo.error = repo.getReleases(GIT_MAX_RELEASES, server.hasArg("insecure") && toBoolean(server.arg("insecure").c_str(), false));
+    if(repo.error == ERR_CERT_VERIFY) {
       server.send(500, _encoding_json, _response_cert);
       return;
     }

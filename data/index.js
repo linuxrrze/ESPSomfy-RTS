@@ -4607,7 +4607,9 @@ class Firmware {
                 // Sort the releases so that the pre-releases are at the bottom.
                 rel.releases.sort((a, b) => a.preRelease === b.preRelease && b.draft === a.draft ? 0 : a.preRelease ? 1 : -1);
 
-                let html = `<div>Select a version from the repository to install using the dropdown below.  Then press the update button to install that version.</div><div style="font-size:.7em;margin-top:4px;">Select Main to install the most recent alpha version from the repository.</div>`;
+                this.gitRepo = rel;
+                let html = `<div>Select a version from the repository to install using the dropdown below.  Then press the update button to install that version.</div><div style="font-size:.7em;margin-top:4px;">Main installs the firmware files on the main branch of the repository, which are those of the latest release.</div>`;
+                if (rel.error) html += `<div style="font-size:.7em;margin-top:4px;color:red;">The list of releases could not be loaded from GitHub (${rel.error > 0 ? 'HTTP ' : 'error '}${rel.error}${rel.error === 403 || rel.error === 429 ? ', probably the limit of 60 requests per hour' : ''}), so only Main is offered. Try again later.</div>`;
                 html += `<div id="divPrereleaseWarning" style="display:none;width:100%;color:red;text-align:center;font-weight:bold;"><span style="margin-top:7px;width:100%;padding:3px;display:inline-block;border-radius:5px;background:white;">WARNING<span><hr style="margin:0px" /><div style="font-size:.7em;padding-left:1em;padding-right:1em;color:black;font-weight:normal;">You have selected a pre-released beta version that has not been fully tested or published for general use.</div></div>`;
                 html += `<div class="field-group" style="text-align:center;">`;
                 html += `<select id="selVersion" data-bind="version" style="width:70%;font-size:2em;color:white;text-align-last:center;" onchange="firmware.gitReleaseSelected(document.getElementById('divGitInstall'));">`
@@ -4616,6 +4618,7 @@ class Firmware {
                         html += `<option style="text-align:left;font-size:.5em;color:black;" data-prerelease="${rel.releases[i].preRelease}" value="${rel.releases[i].version.name}">${rel.releases[i].name}${rel.releases[i].preRelease ? ' - Pre' : ''}</option>`
                 }
                 html += `</select><label for="selVersion">Select a version</label></div>`;
+                html += `<div id="divInstalledNote" style="display:none;font-size:.8em;text-align:center;margin-top:-10px;margin-bottom:10px;"></div>`;
                 html += `<div class="button-container" id="divReleaseNotes" style="text-align:center;margin-top:-20px;display:none;"><button type="button" onclick="firmware.showReleaseNotes(document.getElementById('selVersion').value);" style="display:inline-block;width:auto;padding-left:20px;padding-right:20px;">Release Notes</button></div>`;
                 if (this.isMobile()) {
                     html += `<div style="width:100%;color:red;text-align:center;font-weight:bold;"><span style="margin-top:7px;width:100%;background:yellow;padding:3px;display:inline-block;border-radius:5px;background:white;">WARNING<span></div>`;
@@ -4646,6 +4649,7 @@ class Firmware {
         let divPre = div.querySelector('#divPrereleaseWarning');
 
         let sel = div.querySelector('#selVersion');
+        this.showInstalledNote(div, obj.version);
         if (sel && sel.selectedIndex !== -1 && makeBool(sel.options[sel.selectedIndex].getAttribute('data-prerelease'))) {
             if (divPre) divPre.style.display = '';
         }
@@ -4656,6 +4660,34 @@ class Firmware {
             if (!obj.version || obj.version === 'main' || obj.version === '') divNotes.style.display = 'none';
             else divNotes.style.display = '';
         }
+    }
+    compareVersions(a, b) {
+        for (let key of ['major', 'minor', 'build']) {
+            if (a[key] !== b[key]) return a[key] > b[key] ? 1 : -1;
+        }
+        return a.suffix === b.suffix ? 0 : a.suffix > b.suffix ? 1 : -1;
+    }
+    // Tells whether the selected release is the installed one or older. Main has no known version.
+    showInstalledNote(div, version) {
+        let note = div.querySelector('#divInstalledNote');
+        let btn = div.querySelector('#btnUpdate');
+        if (!note || !this.gitRepo) return;
+        let rel = this.gitRepo.releases.find(x => !x.main && x.version.name === version);
+        let text = '';
+        if (btn) btn.innerText = 'Update';
+        if (rel) {
+            let cmp = this.compareVersions(rel.version, this.gitRepo.fwVersion);
+            if (cmp === 0) {
+                if (this.compareVersions(rel.version, this.gitRepo.appVersion) === 0) {
+                    text = `You're already up to date: ${this.gitRepo.fwVersion.name} is installed. Updating installs it again.`;
+                    if (btn) btn.innerText = 'Reinstall';
+                }
+                else text = `The firmware ${this.gitRepo.fwVersion.name} is installed, but the application is ${this.gitRepo.appVersion.name}. Updating installs both again.`;
+            }
+            else if (cmp < 0) text = `This is older than the installed ${this.gitRepo.fwVersion.name}.`;
+        }
+        note.innerText = text;
+        note.style.display = text ? '' : 'none';
     }
     async getReleaseInfo(tag) {
         let overlay = ui.waitMessage(document.getElementById('divContainer'));
