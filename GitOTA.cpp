@@ -50,6 +50,13 @@ class MQTTTLSPause {
   private:
     bool _paused;
 };
+// Verifying GitHub's certificate chain can block for longer than the 7 second task watchdog set in
+// setup(), so the watchdog gets more time while a GitHub connection is open.
+class WDTExtend {
+  public:
+    WDTExtend() { esp_task_wdt_init(40, true); }
+    ~WDTExtend() { esp_task_wdt_init(7, true); }
+};
 // Logs how much of the task's stack was never used once a GitHub connection is done, to show
 // how close the TLS handshake came to overflowing it.
 class StackReport {
@@ -133,10 +140,13 @@ void GitRelease::toJSON(JsonResponse &json) {
 
 int16_t GitRepo::getReleases(uint8_t num, bool insecure) {
   StackReport report;
+  WDTExtend wdt;
   MQTTTLSPause pause;
   WiFiClientSecure sclient;
   setTrust(sclient, insecure);
-  sclient.setHandshakeTimeout(3);
+  // Verifying the ECC certificate chain of api.github.com takes several seconds on an ESP32, so a
+  // short limit makes every request fail with "connection refused".
+  sclient.setHandshakeTimeout(30);
   uint8_t ndx = 0;
   uint8_t count = min((uint8_t)GIT_MAX_RELEASES, num);
   char url[128];
@@ -274,7 +284,9 @@ int16_t GitRepo::getReleases(uint8_t num, bool insecure) {
       return ERR_CERT_VERIFY;
     }
     else {
-      LOG_PRINTF("GitHub release list request failed: %s\n", HTTPClient::errorToString(httpCode).c_str());
+      char msg[64] = "";
+      sclient.lastError(msg, sizeof(msg));
+      LOG_PRINTF("GitHub release list request failed: %s (%s)\n", HTTPClient::errorToString(httpCode).c_str(), msg);
       https.end();
       sclient.stop();
       return httpCode;
@@ -581,6 +593,7 @@ bool GitUpdater::recoverFilesystem() {
 bool GitUpdater::endUpdate() { return true; }
 int8_t GitUpdater::downloadFile() {
   StackReport report;
+  WDTExtend wdt;
   DEBUG_PRINTF("Begin update %s\n", this->currentFile);
   MQTTTLSPause pause;
   WiFiClientSecure sclient;
