@@ -4469,12 +4469,16 @@ class Firmware {
         let btn = document.getElementById('btnInstallLatest');
         if (!span || !btn) return;
         let text;
+        let known = rel.latest && rel.latest.name;
         if (rel.status === 1) text = 'Checking...';
-        else if (!rel.checked) text = 'Not checked yet';
-        else if (!rel.latest || !rel.latest.name) text = `Check failed (error ${rel.error})`;
+        else if (!known) text = rel.checked ? `Check failed (error ${rel.error})` : 'Not checked yet';
         else if (rel.available) text = `${rel.latest.name} available${rel.autoUpdate ? ', installs between 3:00 and 4:00' : ''}`;
+        else if (this.compareVersions(rel.latest, rel.fwVersion) < 0) text = `${rel.latest.name}, the installed version is newer`;
         else text = `${rel.latest.name}, up to date`;
         span.innerText = text;
+        let time = document.getElementById('spanLatestTime');
+        // latestAge is in seconds, the controller may not know the time of day.
+        if (time) time.innerText = known && rel.latestAge >= 0 ? new Date(Date.now() - rel.latestAge * 1000).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : '-';
         span.style.color = rel.available ? 'red' : '';
         btn.innerText = rel.available ? `Install ${rel.latest.name}` : 'Install Latest';
         btn.style.display = rel.available && rel.status === 0 ? 'inline-block' : 'none';

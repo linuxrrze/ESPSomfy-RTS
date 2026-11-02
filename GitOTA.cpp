@@ -416,6 +416,7 @@ void GitUpdater::setCurrentRelease(GitRepo &repo) {
     if(repo.releases[i].draft || repo.releases[i].preRelease || repo.releases[i].id == 0) continue;
     // Compare the versions.  
     this->latest.copy(repo.releases[i].version);
+    this->latestTime = millis();
     if(repo.releases[i].version.compare(settings.fwVersion) > 0) {
       // We have a new release.
       this->updateAvailable = true;
@@ -432,6 +433,8 @@ void GitUpdater::toJSON(JsonResponse &json) {
   json.addElem("checkForUpdate", settings.checkForUpdate);
   json.addElem("autoUpdate", settings.autoUpdate);
   json.addElem("checked", this->lastCheck != 0);
+  // Seconds since latest was read, so the browser can show when without the controller knowing the time.
+  json.addElem("latestAge", this->latestTime ? (int32_t)((millis() - this->latestTime) / 1000) : (int32_t)-1);
   json.addElem("inetAvailable", this->inetAvailable);
   json.beginObject("fwVersion");
   settings.fwVersion.toJSON(json);
@@ -453,6 +456,7 @@ void GitUpdater::emitUpdateCheck(uint8_t num) {
   json->addElem("checkForUpdate", settings.checkForUpdate);
   json->addElem("autoUpdate", settings.autoUpdate);
   json->addElem("checked", this->lastCheck != 0);
+  json->addElem("latestAge", this->latestTime ? (int32_t)((millis() - this->latestTime) / 1000) : (int32_t)-1);
   json->addElem("inetAvailable", this->inetAvailable);
   json->beginObject("fwVersion");
   settings.fwVersion.toJSON(json);

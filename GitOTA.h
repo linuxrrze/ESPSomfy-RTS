@@ -50,6 +50,8 @@ class GitUpdater {
     bool canCancel = true;
     uint8_t status = 0;
     uint32_t lastCheck = 0;
+    // When latest was last read from GitHub, by the update check or the update dialog.
+    uint32_t latestTime = 0;
     bool updateAvailable = false;
     bool inetAvailable = false;
     appver_t latest;
