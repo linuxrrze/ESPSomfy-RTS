@@ -2,6 +2,8 @@
 #include <WiFiClientSecure.h>
 #include <Update.h>
 #include <HTTPClient.h>
+#include <memory>
+#include <new>
 #include <esp_task_wdt.h>
 #include <mbedtls/ssl.h>
 #include <mbedtls/x509.h>
@@ -45,6 +47,12 @@ class MQTTTLSPause {
     ~MQTTTLSPause() { if(this->_paused) mqtt.resume(); }
   private:
     bool _paused;
+};
+// Logs how much of the task's stack was never used once a GitHub connection is done, to show
+// how close the TLS handshake came to overflowing it.
+class StackReport {
+  public:
+    ~StackReport() { LOG_PRINTF("GitHub connection done, %u bytes of stack never used\n", (unsigned)uxTaskGetStackHighWaterMark(NULL)); }
 };
 // True when the last connection failed because the server certificate could not be verified.
 static bool certFailed(WiFiClientSecure &client) {
@@ -122,6 +130,7 @@ void GitRelease::toJSON(JsonResponse &json) {
 #define ERR_CLIENT_OFFSET -50
 
 int16_t GitRepo::getReleases(uint8_t num, bool insecure) {
+  StackReport report;
   MQTTTLSPause pause;
   WiFiClientSecure sclient;
   setTrust(sclient, insecure);
@@ -321,8 +330,10 @@ void GitUpdater::checkForUpdate() {
   MQTTTLSPause pause;
   settings.printAvailHeap();  
   this->lastCheck = millis();
-  if(this->checkInternet() == 0) {
-    GitRepo repo;
+  // Keep the release list off the stack, the TLS connection below needs it.
+  std::unique_ptr<GitRepo> prepo(new (std::nothrow) GitRepo);
+  if(prepo && this->checkInternet() == 0) {
+    GitRepo &repo = *prepo;
     this->updateAvailable = false;
     this->error = repo.getReleases(2);
     if(this->error == 0) { // Get 2 releases so we can filter our pre-releases
@@ -512,6 +523,7 @@ bool GitUpdater::recoverFilesystem() {
 }
 bool GitUpdater::endUpdate() { return true; }
 int8_t GitUpdater::downloadFile() {
+  StackReport report;
   DEBUG_PRINTF("Begin update %s\n", this->currentFile);
   MQTTTLSPause pause;
   WiFiClientSecure sclient;

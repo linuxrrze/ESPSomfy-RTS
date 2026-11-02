@@ -20,6 +20,10 @@ SomfyShadeController somfy;
 MQTTClass mqtt;
 GitUpdater git;
 
+// The TLS connections to GitHub and to an MQTTS broker run in the loop task, often from inside a
+// web request, and verifying a certificate chain needs more than the core's default 8 KB.
+SET_LOOP_TASK_STACK_SIZE(16 * 1024);
+
 uint32_t oldheap = 0;
 void setup() {
   Serial.begin(115200);

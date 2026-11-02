@@ -1,5 +1,7 @@
 #include <WiFi.h>
 #include <WebServer.h>
+#include <memory>
+#include <new>
 #include <LittleFS.h>
 #include <Update.h>
 #include <esp_task_wdt.h>
@@ -869,7 +871,13 @@ void Web::handleSetSensor(WebServer &server) {
   }
 }
 void Web::handleDownloadFirmware(WebServer &server) {
-  GitRepo repo;
+  // Keep the release list off the stack, the TLS connection below needs it.
+  std::unique_ptr<GitRepo> prepo(new (std::nothrow) GitRepo);
+  if(!prepo) {
+    sendError(server, 500, "Out of memory");
+    return;
+  }
+  GitRepo &repo = *prepo;
   GitRelease *rel = nullptr;
   // The user accepted that the GitHub certificate could not be verified.
   bool insecure = server.hasArg("insecure") && toBoolean(server.arg("insecure").c_str(), false);
@@ -995,7 +1003,13 @@ void Web::begin() {
   onRoute(server, "/login", []() { webServer.handleLogin(server); });
   onRoute(server, "/loginContext", []() { webServer.handleLoginContext(server); });
   onRoute(server, "/getReleases", []() {
-    GitRepo repo;
+    // Keep the release list off the stack, the TLS connection below needs it.
+    std::unique_ptr<GitRepo> prepo(new (std::nothrow) GitRepo);
+    if(!prepo) {
+      sendError(server, 500, "Out of memory");
+      return;
+    }
+    GitRepo &repo = *prepo;
     if(repo.getReleases(GIT_MAX_RELEASES, server.hasArg("insecure") && toBoolean(server.arg("insecure").c_str(), false)) == ERR_CERT_VERIFY) {
       server.send(500, _encoding_json, _response_cert);
       return;
