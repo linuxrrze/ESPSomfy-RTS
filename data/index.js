@@ -558,7 +558,9 @@ async function initSockets() {
             for (let i = 0; i < errs.length; i++)
                 errs[i].remove();
             if (general.reloadApp) {
-                general.reload();
+                // The new index.html asks for the new scripts and styles by their version, so a
+                // normal reload is enough.
+                document.location.reload();
             }
             else {
                 (async () => {
@@ -1291,18 +1293,6 @@ class General {
             if (c.indexOf(n) === 0) return c.substring(n.length, c.length);
         }
         return '';
-    }
-    reload() {
-        let addMetaTag = (name, content) => {
-            let meta = document.createElement('meta');
-            meta.httpEquiv = name;
-            meta.content = content;
-            document.getElementsByTagName('head')[0].appendChild(meta);
-        };
-        addMetaTag('pragma', 'no-cache');
-        addMetaTag('expires', '0');
-        addMetaTag('cache-control', 'no-cache');
-        document.location.reload();
     }
     timeZones = [
     { city: 'Africa/Cairo', code: 'EET-2' },
