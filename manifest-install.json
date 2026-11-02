@@ -1,0 +1,15 @@
+{
+  "name": "ESPSomfy RTS",
+  "version": "2.4.19",
+  "new_install_prompt_erase": true,
+  "builds": [
+    {"chipFamily": "ESP32", "parts": [
+      {"path": "firmware/SomfyController.onboard.esp32.bin", "offset": 0}]},
+    {"chipFamily": "ESP32-S2", "parts": [
+      {"path": "firmware/SomfyController.onboard.esp32s2.bin", "offset": 0}]},
+    {"chipFamily": "ESP32-S3", "parts": [
+      {"path": "firmware/SomfyController.onboard.esp32s3.bin", "offset": 0}]},
+    {"chipFamily": "ESP32-C3", "parts": [
+      {"path": "firmware/SomfyController.onboard.esp32c3.bin", "offset": 0}]}
+  ]
+}
