@@ -30,7 +30,22 @@ Download the files for your chip from the [releases](https://github.com/linuxrrz
 
 All chips use the same `SomfyController.littlefs.bin`.
 
-### Controller already running ESPSomfy RTS: use the web UI (keeps your configuration)
+### Controller running v2.4.14 or later: update from GitHub (keeps your configuration)
+Open System → Firmware and choose **Github Update**. Pick a release and the controller downloads and installs both files itself. The **Latest** row on the same page shows the newest release, and **Last check** shows when the controller last asked GitHub. **Check Now** asks again, and **Install Latest** appears when there is something newer.
+
+#### Automatic updates
+Under System → Options, **Install Updates Automatically** makes the controller install new releases by itself. **Auto Check for Updates** only reports them.
+
+- The controller asks GitHub for new releases one minute after it connects to the network, and then every 24 hours from that first check. It does not check at a fixed time of day.
+- When a check finds a newer release, the controller installs it in the next hour between 3:00 and 4:00 local time. If it doesn't have the time from NTP yet, it installs right away.
+- So **a new release can take up to about two days to be installed**. A release can come out just after a check, the next check comes 24 hours later, and the install then waits for the next 3:00. To have it installed the coming night, press **Check Now** on the Firmware page. To install it immediately, press **Install Latest**.
+- The 3:00 window uses the time zone set on the controller. If that's wrong, the install happens at 3:00 in that zone instead.
+- The controller installs a given release automatically only once, so a faulty release isn't reinstalled every night. If the download fails before anything is written, it tries again the next night.
+- The shades don't respond while the update installs, which takes a few minutes.
+
+### Controller already running ESPSomfy RTS: upload the files through the web UI (keeps your configuration)
+This works on every version. Use it for versions older than v2.4.14, or if the update from GitHub fails.
+
 1. Open System → Firmware, choose **Update Firmware** and upload `SomfyController.ino.<chip>.bin`. Wait for the controller to reboot.
 2. Choose **Update Application** and upload `SomfyController.littlefs.bin`.
 
